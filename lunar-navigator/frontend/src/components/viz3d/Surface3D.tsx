@@ -20,16 +20,19 @@ function skyDir(alt: number, az: number) {
 /** Drag to orbit, scroll to zoom, right-drag to pan. `resetKey` changes → back to the starting view. */
 function Controls({ resetKey }: { resetKey: number }) {
   const { camera, gl } = useThree();
-  const controls = useMemo(() => {
+  // Created in the effect (not useMemo) so StrictMode's dev-only unmount/remount gets a fresh, connected instance.
+  const [controls, setControls] = useState<OrbitControls | null>(null);
+  useEffect(() => {
     const c = new OrbitControls(camera, gl.domElement); // uses camera.up (z), so the ground stays level
     c.enableDamping = false;
     c.minDistance = 4;
     c.maxDistance = 70;
     c.maxPolarAngle = Math.PI / 2 - 0.02; // don't go under the ground
-    return c;
+    setControls(c);
+    return () => c.dispose();
   }, [camera, gl]);
-  useEffect(() => () => controls.dispose(), [controls]);
   useEffect(() => {
+    if (!controls) return;
     camera.position.set(...HOME);
     controls.target.set(0, 0, 0);
     controls.update();

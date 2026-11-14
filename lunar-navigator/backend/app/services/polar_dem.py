@@ -55,7 +55,7 @@ def local_axes(lon):
 # ---------------------------------------------------------------- features
 @lru_cache(maxsize=1)
 def features() -> dict:
-    return json.loads(FEATURES_FILE.read_text())
+    return json.loads(FEATURES_FILE.read_text(encoding="utf-8"))
 
 
 def _pike(d_km: float) -> tuple[float, float]:

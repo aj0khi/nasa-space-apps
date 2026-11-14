@@ -13,7 +13,7 @@ SITES_FILE = Path(__file__).resolve().parents[1] / "data" / "sites.json"
 
 @lru_cache(maxsize=1)
 def all_sites() -> list[Site]:
-    return [Site(**s) for s in json.loads(SITES_FILE.read_text())]
+    return [Site(**s) for s in json.loads(SITES_FILE.read_text(encoding="utf-8"))]
 
 
 @router.get("/sites", response_model=list[Site])

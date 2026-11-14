@@ -18,7 +18,7 @@ function skyDir(alt: number, az: number) {
 }
 
 /** Drag to orbit, scroll to zoom, right-drag to pan. `resetKey` changes → back to the starting view. */
-function Controls({ resetKey }: { resetKey: number }) {
+function Controls({ resetKey, onClose }: { resetKey: number; onClose?: (close: boolean) => void }) {
   const { camera, gl } = useThree();
   // Created in the effect (not useMemo) so StrictMode's dev-only unmount/remount gets a fresh, connected instance.
   const [controls, setControls] = useState<OrbitControls | null>(null);
@@ -28,8 +28,11 @@ function Controls({ resetKey }: { resetKey: number }) {
     c.minDistance = 4;
     c.maxDistance = 70;
     c.maxPolarAngle = Math.PI / 2 - 0.02; // don't go under the ground
+    // Zoomed in until the ~200 m data cells show: offer the ground-level explorer instead.
+    const report = () => onClose?.(camera.position.distanceTo(c.target) < 7);
+    c.addEventListener("change", report);
     setControls(c);
-    return () => c.dispose();
+    return () => { c.removeEventListener("change", report); c.dispose(); };
   }, [camera, gl]);
   useEffect(() => {
     if (!controls) return;
@@ -59,7 +62,8 @@ function SkyBody({ alt, az, color, radius }: { alt: number; az: number; color: s
   );
 }
 
-export default function Surface3D({ height = 380 }: { height?: number }) {
+export default function Surface3D({ height = 380, onExplore }: { height?: number; onExplore?: () => void }) {
+  const [close, setClose] = useState(false);
   const time = useApp((s) => s.time);
   const loc = useApp((s) => s.location());
   const key = loc ? `${loc.lat},${loc.lon}` : "";
@@ -96,8 +100,13 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
   return (
     <div className="panel" style={{ height, display: "flex", flexDirection: "column" }}>
       <h3>3D view (height ×{VERT_EXAGGERATION}) <button onClick={() => setResetKey((k) => k + 1)}>Reset view</button></h3>
+      {onExplore && close && (
+        <div className="zoom-hint">
+          You're closer than the data's ~200 m detail. <button onClick={onExplore}>🧑‍🚀 Explore on foot</button>
+        </div>
+      )}
       <Canvas style={{ flex: 1, minHeight: 0, cursor: "grab" }} shadows camera={{ position: HOME, up: [0, 0, 1], fov: 45 }}>
-        <Controls resetKey={resetKey} />
+        <Controls resetKey={resetKey} onClose={setClose} />
         <ambientLight intensity={0.12} />
         <directionalLight position={light} intensity={sun && sun.altitude > 0 ? 2 : 0} castShadow
           shadow-mapSize={[2048, 2048]} shadow-camera-left={-15} shadow-camera-right={15}

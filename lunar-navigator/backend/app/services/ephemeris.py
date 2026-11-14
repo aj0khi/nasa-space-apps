@@ -75,12 +75,19 @@ def sun_earth_state(lat: float, lon: float, when: datetime) -> SunEarthState:
 
 
 def horizon_elevation(lat: float, lon: float, azimuth_deg: np.ndarray) -> np.ndarray:
-    """Local horizon height (deg) in each direction.
+    """Local horizon height (deg) in each direction: crater walls and mountains block the Sun and Earth.
 
-    TODO(ASTRO+TERRAIN): build from the DEM (terrain.horizon_profile) so crater walls block the Sun.
-    Flat horizon for now.
+    Inside the south-pole terrain model (south of 70°S) this is the real skyline seen from the site.
+    Elsewhere it is a flat horizon. TODO(TERRAIN): extend once global LOLA data is loaded.
     """
-    return np.zeros_like(azimuth_deg)
+    from app.services import polar_dem  # local import: polar_dem doesn't need the ephemeris
+
+    az = np.asarray(azimuth_deg, dtype=float)
+    if not polar_dem.covered(lat):
+        return np.zeros_like(az)
+    hz_az, hz = polar_dem.horizon_profile(round(lat, 4), round(lon, 4))
+    return np.interp(az % 360, hz_az, hz, period=360)
+
 
 
 def _events(times: list[datetime], alt: np.ndarray, horizon: np.ndarray) -> list[Event]:
@@ -108,14 +115,15 @@ def find_windows(lat: float, lon: float, start: datetime, days: float = 30, step
     e_alt, e_az, _ = obs.observe(eph["earth"]).apparent().altaz()
     s_alt, s_az, e_alt, e_az = s_alt.degrees, s_az.degrees, e_alt.degrees, e_az.degrees
 
-    s_hz = horizon_elevation(lat, lon, s_az)
+    s_hz = horizon_elevation(lat, lon, s_az)  # terrain skyline; negative on peaks, 0 = flat
     e_hz = horizon_elevation(lat, lon, e_az)
     sun_ev = _events(times, s_alt, s_hz)
     earth_ev = _events(times, e_alt, e_hz)
 
     # downsample the series so the frontend payload stays small (~500 points)
     stride = max(1, n // 500)
-    series = [SeriesPoint(time=times[i], sun_alt=s_alt[i], sun_az=s_az[i], earth_alt=e_alt[i], earth_az=e_az[i])
+    series = [SeriesPoint(time=times[i], sun_alt=s_alt[i], sun_az=s_az[i], earth_alt=e_alt[i], earth_az=e_az[i],
+                          sun_horizon=s_hz[i], earth_horizon=e_hz[i])
               for i in range(0, n, stride)]
 
     return Windows(
@@ -125,6 +133,9 @@ def find_windows(lat: float, lon: float, start: datetime, days: float = 30, step
         earth_visible_fraction=float(np.mean(e_alt > e_hz)),
         next_sunset=next((e.time for e in sun_ev if e.type == "set"), None),
         next_earthset=next((e.time for e in earth_ev if e.type == "set"), None),
+        sun_visible_now=bool(s_alt[0] > s_hz[0]),
+        earth_visible_now=bool(e_alt[0] > e_hz[0]),
+        terrain_horizon=bool(np.any(s_hz > 0) or np.any(e_hz > 0)),
         series=series,
     )
 

@@ -10,8 +10,8 @@ from app.services import ephemeris, terrain
 client = TestClient(app)
 
 
-def test_sites_load():
-    r = client.get("/api/sites")
+def test_catalog_load():
+    r = client.get("/api/catalog")
     assert r.status_code == 200 and len(r.json()) >= 5
 
 
@@ -40,6 +40,30 @@ def test_shadow_crater_floor_dark_at_low_sun():
     grid, _ = terrain.load_elevation(0, 0, 20, 64)
     m = terrain.shadow_mask(grid, terrain.pixel_size_m(20, 64), sun_alt=2, sun_az=90)
     assert m.mean() < 0.9 and m.max() == 1
+
+
+SOUTH_SUMMER = datetime(2026, 11, 14, tzinfo=timezone.utc)
+
+
+def test_shackleton_floor_is_permanently_shadowed():
+    # deep crater floor at the pole: the 4 km walls hide a Sun that never rises more than ~1.5°
+    w = ephemeris.find_windows(-89.67, 129.78, SOUTH_SUMMER, days=30, step_min=120)
+    assert w.terrain_horizon and w.sunlit_fraction == 0
+
+
+def test_malapert_summit_gets_lots_of_sun():
+    flat = ephemeris.find_windows(-86.0, 0.0, SOUTH_SUMMER, days=30, step_min=120)
+    assert flat.sunlit_fraction > 0.4
+
+
+def test_polar_illumination_map():
+    from app.services import illumination
+    import base64
+    a = illumination.polar_illumination(SOUTH_SUMMER, -84, 128)
+    raw = base64.b64decode(a["data"])
+    assert len(raw) == 128 * 128
+    assert 0.05 < a["lit_fraction"] < 0.95  # some ground lit, some in shadow
+    assert abs(a["sun"]["elevation_at_pole"]) < 1.7
 
 
 def test_cross_section_shape():

@@ -1,36 +1,74 @@
-// IDEAL LANDING LOCATIONS: every lettered site with ✓ / ~ / ✗ for the chosen date. Owner: MAP.
-import { shortName } from "../../lib/letters";
+// IDEAL LANDING LOCATIONS: A–H with GO ✓ / CAUTION ⚠ / NO-GO ✗ from the evaluation engine (GET /api/sites).
+// Owner: MAP. Data: backend/evaluator.py.
 import { useApp } from "../../state/store";
-import type { Site, Status } from "../../types";
+import type { EvalStatus } from "../../types";
 
-const MARK: Record<Status, string> = { green: "✓", yellow: "~", red: "✗" };
-const WORD: Record<Status, string> = { green: "good", yellow: "workable", red: "risky" };
+export const STATUS_UI: Record<EvalStatus, { mark: string; word: string; cls: "green" | "yellow" | "red" }> = {
+  GO: { mark: "✓", word: "GO", cls: "green" },
+  CAUTION: { mark: "⚠", word: "CAUTION", cls: "yellow" },
+  NO_GO: { mark: "✗", word: "NO-GO", cls: "red" },
+};
 
-interface Props { sites: Site[]; letters: Record<string, string>; onSelect: (id: string) => void }
+/** "NASA JPL Horizons Live REST API (DE441)" → short label + whether it is live */
+export function sourceLabel(src: string | undefined) {
+  if (!src) return { text: "…", live: false };
+  if (src.includes("Horizons Live")) return { text: "NASA JPL Horizons · live", live: true };
+  if (src.includes("Skyfield")) return { text: "NASA JPL DE421 · offline", live: false };
+  return { text: "approximate formula · offline", live: false };
+}
 
-export default function LandingList({ sites, letters, onSelect }: Props) {
-  const { scores, selectedId } = useApp();
-  const ordered = sites.filter((s) => letters[s.id]).sort((a, b) => letters[a.id].localeCompare(letters[b.id]));
+interface Props { loading: boolean; error: string | null; onSelect: (id: string) => void }
+
+export default function LandingList({ loading, error, onSelect }: Props) {
+  const { evaluation, selectedId, minDays, setMinDays } = useApp();
+  const sites = evaluation?.sites ?? [];
+  const src = sourceLabel(evaluation?.ephemeris_source);
 
   return (
     <section className="rail-sec">
-      <h2>Ideal landing locations</h2>
+      <h2>Ideal landing locations {loading && <span className="spinner" aria-label="updating" />}</h2>
+
+      {error && !evaluation && <p className="error">Couldn’t load site statuses ({error}). Is the backend running on port 8000?</p>}
+
+      {evaluation && (
+        <div className="landsummary">
+          <span><b>{evaluation.summary.viable_sites_count}</b> of {evaluation.summary.total_sites} viable</span>
+          <span>Best: <b>{evaluation.summary.recommended_backup_site}</b> {evaluation.summary.recommended_backup_name}</span>
+        </div>
+      )}
+
       <ul className="landlist">
-        {ordered.map((s) => {
-          const st = scores[s.id]?.status;
+        {sites.map((s) => {
+          const ui = STATUS_UI[s.status];
           return (
             <li key={s.id}>
               <button className={s.id === selectedId ? "sel" : ""} onClick={() => onSelect(s.id)}
-                aria-label={`${letters[s.id]}, ${s.name}, ${st ? WORD[st] : "loading"}`} title={s.name}>
-                <span className="letter">{letters[s.id]}</span>
-                <span className={`mark ${st ?? ""}`}>{st ? MARK[st] : "…"}</span>
-                <span className="lname">{shortName(s)}</span>
+                title={`${s.name}: ${ui.word}, ${s.window_label}`}
+                aria-label={`${s.id}, ${s.name}, ${ui.word}, ${s.is_sunlit ? "in sunlight" : "in shadow"}, ${s.has_earth_comm ? "Earth in view" : "no Earth contact"}`}>
+                <span className="letter">{s.id}</span>
+                <span className={`mark ${ui.cls}`}>{ui.mark}</span>
+                <span className={`lightnow ${s.is_sunlit ? "on" : "off"}`} aria-hidden>{s.is_sunlit ? "☀" : "☾"}</span>
+                <span className="lname">{s.name}</span>
               </button>
             </li>
           );
         })}
       </ul>
-      <div className="landkey">✓ good · ~ workable · ✗ risky (next 14 days)</div>
+
+      <div className="landopts">
+        <label>
+          Mission needs{" "}
+          <select value={minDays} onChange={(e) => setMinDays(+e.target.value)} aria-label="Minimum days of continuous sunlight">
+            {[1, 3, 5, 7, 10].map((d) => <option key={d} value={d}>{d} days</option>)}
+          </select>{" "}
+          of sunlight
+        </label>
+      </div>
+      <div className="landkey">
+        ✓ GO · ⚠ CAUTION · ✗ NO-GO · ☀ lit / ☾ shadow now
+        {evaluation && <> · checked at {evaluation.query_timestamp_utc.slice(11, 16)} UTC</>}
+      </div>
+      <div className={`source ${src.live ? "live" : ""}`}>Sun &amp; Earth: {src.text}</div>
     </section>
   );
 }

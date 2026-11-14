@@ -53,6 +53,8 @@ class SeriesPoint(BaseModel):
     sun_az: float
     earth_alt: float
     earth_az: float
+    sun_horizon: float = 0.0    # terrain horizon height in the Sun's direction (deg)
+    earth_horizon: float = 0.0  # terrain horizon height in Earth's direction (deg)
 
 
 class Windows(BaseModel):
@@ -62,7 +64,35 @@ class Windows(BaseModel):
     earth_visible_fraction: float
     next_sunset: datetime | None
     next_earthset: datetime | None
+    sun_visible_now: bool = False    # Sun above the terrain at the start time
+    earth_visible_now: bool = False
+    terrain_horizon: bool = False    # True when crater walls / mountains were taken into account
     series: list[SeriesPoint]
+
+
+
+class SunInfo(BaseModel):
+    subsolar_lat: float
+    subsolar_lon: float
+    elevation_at_pole: float
+
+
+class EarthInfo(BaseModel):
+    sub_lat: float
+    sub_lon: float
+    elevation_at_pole: float
+
+
+class Illumination(BaseModel):
+    time: datetime
+    res: int
+    half_km: float
+    min_lat: float
+    data: str  # base64 bytes, res×res, row 0 = top. 255 = outside map; bit 7 = sunlit; bits 0–6 = brightness
+    lit_fraction: float
+    sun: SunInfo
+    earth: EarthInfo
+    synthetic: bool
 
 
 class Season(BaseModel):

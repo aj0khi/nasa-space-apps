@@ -3,13 +3,38 @@
 Base URL: `/api`. All times are ISO‑8601 UTC. All angles are in degrees. Longitude is east‑positive (−180…180).
 Source of truth: `backend/app/models.py` ↔ `frontend/src/types.ts`. Keep them in sync.
 
-## Sites
-`GET /api/sites` → `Site[]`
+## One server, two engines
+`cd lunar-navigator/backend && .venv/bin/uvicorn app.main:app --reload --reload-dir app --port 8000` serves everything below.
+
+| Paths | Engine | Used by |
+|---|---|---|
+| `/api/sites`, `/api/sites/{id}`, `/api/compare`, `/api/horizons-validate` | **A–H GO / NO-GO engine** in `/backend` (Diego). Spec: `/system_arch.md` | Rail (list, Selected Site, coordinates), map markers, Sky view, Timeline, Power & comms, Compare tab |
+| `/api/illumination/polar`, `/api/features`, `/api/ephemeris/*`, `/api/terrain/*`, `/api/score`, `/api/mission/plan` | Map/terrain engine in `lunar-navigator/backend` | Map shading + Sun, cross section, 3D, seasons, custom points, mission plan |
+| `/api/catalog` | Other notable sites (Apollo, Chang'e, CLPS…) | not shown in the UI yet |
+
+Both engines get Sun/Earth positions from NASA JPL data and agree to ~0.01° (`tests/test_integration.py`).
+The A–H engine asks the **live JPL Horizons API** first; offline it uses JPL DE421 via Skyfield.
+Send it **6-hour-aligned dates** (00/06/12/18 UTC, see `sixHourKey` in the frontend) so slider moves hit its NASA cache.
+
+## A–H evaluation (`/backend`, see `/system_arch.md` for every field)
+`GET /api/sites?date=2026-11-16T18:00:00Z&min_duration_days=3` → `{ query_timestamp_utc, ephemeris_source, summary, sites: [...] }`
 ```json
-{ "id": "apollo11", "name": "Apollo 11 – Tranquility Base", "lat": 0.674, "lon": 23.473,
-  "program": "Apollo", "country": "USA", "year": 1969, "category": "historic",
-  "resources": { "water_ice": "none", "psr_distance_km": null, "notes": "..." }, "verified": true }
+{ "id": "A", "name": "Shackleton Connecting Ridge", "status": "CAUTION", "badge": "✓", "suitability_score": 77.5,
+  "coordinates": { "lat": -89.45, "lon": 222.0, "elevation_m": 2120.0 },
+  "is_sunlit": true, "has_earth_comm": false, "window_label": "Nov 01 – Dec 01, 2026 (15.0d left)",
+  "sunlit_pct_30d": 100.0, "dte_comm_pct_30d": 46.3, "resources": ["…"], "cautions": ["…"] }
 ```
+Longitudes may be 0–360 °E (the frontend normalises with `normLon`). Status → UI: GO ✓ green · CAUTION ⚠ yellow · NO_GO ✗ red.
+
+`GET /api/sites/{id}?date=&min_duration_days=` → adds `ephemeris`, `visibility`, `window` (incl. `timeline_6h`, 121 steps ±15 d),
+`horizon_angles_deg[360]`, `terrain_features`, `slope_deg`, `roughness_m`, `ice_distance_km`, `psr_name`, `cross_section_aa`.
+
+`GET /api/compare?site_a=A&date_a=&site_b=C&date_b=` → `{ recommended: {scenario, site_id, key_differences…}, scenario_1, scenario_2 }`
+
+`GET /api/horizons-validate?site_id=A&date=` → local ephemeris + a live NASA JPL Horizons query for the same site/time.
+
+## Catalog
+`GET /api/catalog` → `Site[]` (from `app/data/sites.json`, owner GEO)
 
 ## Sun & Earth state at an instant
 `GET /api/ephemeris/state?lat=&lon=&time=` → `SunEarthState`
@@ -36,6 +61,21 @@ Source of truth: `backend/app/models.py` ↔ `frontend/src/types.ts`. Keep them 
 [{ "key": "south_summer", "name": "Southern summer", "time": "2026-11-14T06:00:00Z", "subsolar_lat": -1.56 }]
 ```
 The Sun's latitude on the Moon only swings ±1.54°, but at the pole that decides which rims stay lit.
+
+## Sun & shadows on the south-pole map
+`GET /api/illumination/polar?time=&min_lat=-80&res=384` → shaded-relief image lit by the real Sun (cached per hour)
+```json
+{ "time": "2026-11-14T20:00:00+00:00", "res": 384, "half_km": 316.4, "min_lat": -80,
+  "data": "<base64 res×res bytes: 255 = outside map, bit 7 = sunlit, bits 0–6 = brightness>",
+  "lit_fraction": 0.46,
+  "sun":   { "subsolar_lat": -1.56, "subsolar_lon": 116.5, "elevation_at_pole": 1.56 },
+  "earth": { "sub_lat": 5.1, "sub_lon": -3.2, "elevation_at_pole": -5.1 }, "synthetic": true }
+```
+Map coordinates are polar stereographic km, 0° longitude up, 90°E right (see `services/polar_dem.py`).
+
+`GET /api/features` → craters and massifs drawn on the map and used to build the terrain model.
+
+`windows` now also returns `sun_visible_now`, `earth_visible_now`, `terrain_horizon`, and each series point carries `sun_horizon` / `earth_horizon`.
 
 ## Terrain
 `GET /api/terrain/elevation?lat=&lon=&size_km=20&res=128` → `{ "grid": number[][], "pixel_m": 156.25, "min": -4200, "max": 1800, "synthetic": true }`

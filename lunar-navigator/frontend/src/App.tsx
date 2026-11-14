@@ -1,40 +1,40 @@
 // App shell, laid out like the team sketch. Owner: LEAD.
 //
-//   ┌ 2D │ Cross section │ 3D ┐──────────────┬──────────────────┐
-//   │                                        │ DATE             │
-//   │      main view (Team 1)                │ IDEAL LANDING    │
-//   │                                        │ SELECTED SITE    │  ← right rail (Team 2)
-//   │                                        │ coordinates      │
-//   └────────────────────────────────────────┴──────────────────┘
-import { useEffect, useMemo, useState } from "react";
+//   ┌ 2D │ Cross section │ 3D │ Compare ┐──────┬──────────────────┐
+//   │                                          │ DATE             │
+//   │      main view (Team 1)                  │ IDEAL LANDING    │  ← A–H GO / NO-GO engine
+//   │                                          │ SELECTED SITE    │    (GET /api/sites, /api/sites/{id})
+//   │                                          │ coordinates      │
+//   └──────────────────────────────────────────┴──────────────────┘
+import { useEffect, useState } from "react";
 import { api } from "./api/client";
 import TopBar from "./components/layout/TopBar";
 import DatePanel from "./components/rail/DatePanel";
 import LandingList from "./components/rail/LandingList";
 import SelectedSite from "./components/rail/SelectedSite";
 import CoordsBar from "./components/rail/CoordsBar";
-import { useScores } from "./hooks/useScores";
-import { CUSTOM_LETTER, siteLetters } from "./lib/letters";
+import { sixHourKey, useLatest } from "./hooks/useLatest";
 import { go, useRoute, View } from "./router";
 import { useApp } from "./state/store";
 import MapView from "./views/MapView";
 import SectionView from "./views/SectionView";
 import ThreeDView from "./views/ThreeDView";
+import CompareView from "./views/CompareView";
+
+export const CUSTOM_LETTER = "X";
 
 const TABS: { key: View; label: string }[] = [
   { key: "2d", label: "2D" },
   { key: "section", label: "Cross section" },
   { key: "3d", label: "3D" },
+  { key: "compare", label: "Compare" },
 ];
 
 export default function App() {
   const route = useRoute();
-  const { sites, setSites, select, setCustom, clearSelection, selectedId } = useApp();
+  const { select, setCustom, clearSelection, selectedId, setEvaluation, setDetails, minDays } = useApp();
+  const time = useApp((s) => s.time);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
-
-  useEffect(() => {
-    api.sites().then(setSites).catch(console.error);
-  }, [setSites]);
 
   // URL → store
   useEffect(() => {
@@ -43,12 +43,20 @@ export default function App() {
     else clearSelection();
   }, [route.site, route.lat, route.lon, select, setCustom, clearSelection]);
 
-  const letters = useMemo(() => siteLetters(sites), [sites]);
-  const lettered = useMemo(() => sites.filter((s) => letters[s.id]), [sites, letters]);
-  useScores(lettered);
+  // A–H engine: statuses for all sites, and full details for the selected one. 6-hour grid = NASA cache hits.
+  const slot = sixHourKey(time);
+  const evaluation = useLatest(() => api.sites(slot, minDays), `${slot}|${minDays}`);
+  useEffect(() => { if (evaluation.data) setEvaluation(evaluation.data); }, [evaluation.data, setEvaluation]);
 
-  const letter = selectedId ? letters[selectedId] ?? "•" : CUSTOM_LETTER;
+  const details = useLatest(() => (selectedId ? api.siteDetails(selectedId, slot, minDays) : null), `${selectedId}|${slot}|${minDays}`);
+  useEffect(() => {
+    // only accept details that belong to the current selection
+    setDetails(details.data && details.data.id === selectedId ? details.data : null);
+  }, [details.data, selectedId, setDetails]);
+
+  const letter = selectedId ?? CUSTOM_LETTER;
   const hasSelection = !!(route.site || route.lat != null);
+  const needsSelection = route.view === "section" || route.view === "3d";
 
   return (
     <div className="shell">
@@ -63,8 +71,8 @@ export default function App() {
           ))}
         </nav>
         <div className="viewbody">
-          {route.view === "2d" && <MapView letters={letters} onCursor={setCursor} />}
-          {route.view !== "2d" && !hasSelection && (
+          {route.view === "2d" && <MapView onCursor={setCursor} />}
+          {needsSelection && !hasSelection && (
             <div className="empty">
               <p>Pick a landing site first.</p>
               <button onClick={() => go.view("2d")}>Open the 2D map</button>
@@ -72,12 +80,13 @@ export default function App() {
           )}
           {route.view === "section" && hasSelection && <SectionView letter={letter} />}
           {route.view === "3d" && hasSelection && <ThreeDView />}
+          {route.view === "compare" && <CompareView />}
         </div>
       </main>
       <aside className="rail">
         <DatePanel />
-        <LandingList sites={lettered} letters={letters} onSelect={(id) => go.site(id)} />
-        <SelectedSite letter={selectedId ? letters[selectedId] : undefined} />
+        <LandingList loading={evaluation.loading} error={evaluation.error} onSelect={(id) => go.site(id)} />
+        <SelectedSite loading={details.loading} />
         <CoordsBar cursor={cursor} />
       </aside>
     </div>

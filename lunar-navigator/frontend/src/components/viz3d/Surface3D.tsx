@@ -69,18 +69,17 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
     const n = grid.length, size = (n - 1) * pixel_m / 1000; // km
     const g = new THREE.PlaneGeometry(size, size, n - 1, n - 1);
     const pos = g.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setZ(i, (grid[Math.floor(i / n)][i % n] / 1000) * VERT_EXAGGERATION);
+    // Heights relative to the landing site, so the site sits at z = 0 where the camera, lander and Sun/Earth
+    // markers are anchored. (The regional terrain model is in real metres, e.g. Malapert's summit is ~5 km up.)
+    const ref = grid[Math.floor(n / 2)][Math.floor(n / 2)];
+    for (let i = 0; i < pos.count; i++) pos.setZ(i, ((grid[Math.floor(i / n)][i % n] - ref) / 1000) * VERT_EXAGGERATION);
     g.computeVertexNormals();
     return g;
   }, [elev.data]);
 
   const [resetKey, setResetKey] = useState(0);
-  // Ground height under the site (center of the tile), in scene units, so the lander sits on the surface.
-  const siteZ = useMemo(() => {
-    if (!elev.data) return 0;
-    const g = elev.data.grid, c = Math.floor(g.length / 2);
-    return (g[c][c] / 1000) * VERT_EXAGGERATION;
-  }, [elev.data]);
+  // The mesh is drawn relative to the site's height (see geom), so the lander sits on the surface at z = 0.
+  const siteZ = 0;
   const earth = state.data?.earth;
 
   // Plane is in x(east)/y(north)/z(up) before we rotate it; light direction from sun alt/az.

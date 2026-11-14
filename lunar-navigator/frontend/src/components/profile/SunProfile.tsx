@@ -25,10 +25,12 @@ const VIEW = {
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const { time, setTime, baseTime, setBaseTime } = useApp();
+  const details = useApp((s) => s.details); // A–H engine verdict for the selected site (null for custom points)
   const loc = useApp((s) => s.location());
   const key = loc ? `${loc.lat},${loc.lon}` : "";
 
-  const [bearing, setBearing] = useState(20);
+  const [manualBearing, setBearing] = useState(20);
+  const [followSun, setFollowSun] = useState(true); // system_arch.md: A–A′ runs along the Sun's ray
   const [lengthKm, setLengthKm] = useState(8);
   const [exag, setExag] = useState(1);
   const [playing, setPlaying] = useState(false);
@@ -38,14 +40,20 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const seasons = useApi(() => api.seasons(new Date().toISOString()), [], 0);
   const series = useApi(() => (loc ? api.windows(loc, baseTime.toISOString(), LUNAR_DAY_DAYS, 60) : null),
     [key, baseTime.getTime()], 0);
-  const section = useApi(() => (loc ? api.crossSection(loc, [
-    { azimuth: (bearing + 180) % 360, length_km: lengthKm },
-    { azimuth: bearing, length_km: lengthKm },
-  ]) : null), [key, bearing, lengthKm], 120);
 
   const pts = series.data?.series ?? [];
   const idx = pts.length ? nearestIndex(pts, time) : 0;
   const now = pts[idx];
+
+  // Following the Sun: A′ (away from the Sun) → site → A (toward the Sun). Snapped to 5° so the slice
+  // isn't refetched every hour of slider movement.
+  // In the Earth-contact view the slice follows Earth instead (A = toward Earth).
+  const targetAz = now ? (body === "sun" ? now.sun_az : now.earth_az) : 0;
+  const bearing = followSun && now ? (Math.round(targetAz / 5) * 5) % 360 : manualBearing;
+  const section = useApi(() => (loc ? api.crossSection(loc, [
+    { azimuth: (bearing + 180) % 360, length_km: lengthKm },
+    { azimuth: bearing, length_km: lengthKm },
+  ]) : null), [key, bearing, lengthKm], 120);
 
   // Play: step through the lunar day (1 sample = 1 hour).
   useEffect(() => {
@@ -157,7 +165,8 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <line x1={draw.X(0)} x2={draw.X(0)} y1={TOP - 30} y2={draw.H} stroke="var(--text)" strokeDasharray="3 4" strokeOpacity={0.5} />
           <text x={draw.X(0)} y={TOP - 36} textAnchor="middle" fontSize={14} fill="var(--text)">▼ {letter}</text>
           {/* slice ends, A and A′ */}
-          {[{ x: 1.5, t: letter, a: "start" }, { x: W - 1.5, t: `${letter}′`, a: "end" }].map((e) => (
+          {/* system_arch.md: A′ = away from the Sun, A = toward the Sun (right end = bearing direction) */}
+          {[{ x: 1.5, t: `${letter}′`, a: "start" }, { x: W - 1.5, t: letter, a: "end" }].map((e) => (
             <g key={e.t}>
               <line x1={e.x} x2={e.x} y1={TOP - 54} y2={draw.H} stroke="var(--text)" strokeWidth={2} />
               <text x={e.a === "start" ? e.x + 8 : e.x - 8} y={TOP - 40} textAnchor={e.a} fontSize={18} fontWeight={700} fill="var(--text)">{e.t}</text>
@@ -177,12 +186,12 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
             ))}
           </svg>
           <div className="profile-axis">
-            <span><b>{letter}</b> · {compass(bearing + 180)} · −{lengthKm} km</span>
+            <span><b>{letter}′</b> · {compass(bearing + 180)} · −{lengthKm} km</span>
             <span>
               {view.total} over this lunar day: up to {maxH.toFixed(0)} h of {totalH.toFixed(0)} h
               ({totalH ? Math.round((100 * maxH) / totalH) : 0}%) · stronger colour = more
             </span>
-            <span>+{lengthKm} km · {compass(bearing)} · <b>{letter}′</b></span>
+            <span>+{lengthKm} km · {compass(bearing)} · <b>{letter}</b></span>
           </div>
         </>
       )}
@@ -195,13 +204,18 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       </div>
 
       <div className="profile-stats">
-        <PlanView bearing={bearing} sunAz={now?.sun_az} sunUp={!!sun?.up} />
+        <PlanView bearing={bearing} sunAz={now ? targetAz : undefined} sunUp={!!sun?.up} />
         <div className="stats">
-          <Stat label="Sun elevation" value={now ? `${now.sun_alt.toFixed(1)}°` : "…"} />
+          <Stat label="Sun elevation" value={now ? `${now.sun_alt.toFixed(1)}°` : "…"} sub="geometric, at the slider time" />
           <Stat label="Sun azimuth" value={now ? `${now.sun_az.toFixed(0)}° (${compass(now.sun_az)})` : "…"} />
           <Stat label="Apparent angle in slice" value={sun ? (sun.up ? `${sun.apparent.toFixed(1)}°` : "below horizon") : "…"} />
           <Stat label={view.pct} value={shadePct != null ? `${shadePct}%` : "…"} />
-          <Stat label="Earth" value={now ? (now.earth_alt > 0 ? `${now.earth_alt.toFixed(1)}° up · contact ✓` : "below horizon · no contact") : "…"} />
+          {details ? (
+            <Stat label="Earth contact" value={details.visibility.has_earth_comm ? "in view · contact ✓" : "blocked · relay needed"}
+              sub={`A–H engine, ${details.query_timestamp_utc.slice(11, 16)} UTC (incl. +${details.ephemeris.relief_dip_deg}° for site height)`} />
+          ) : (
+            <Stat label="Earth" value={now ? (now.earth_alt > now.earth_horizon ? `${now.earth_alt.toFixed(1)}° up · contact ✓` : "below skyline · no contact") : "…"} />
+          )}
           <Stat label="Moment" value={now ? `Day ${dayN.toFixed(1)} of ${LUNAR_DAY_DAYS}` : "…"} sub={now ? new Date(now.time).toUTCString().slice(5, 22) + " UTC" : ""} />
         </div>
       </div>
@@ -230,7 +244,12 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
         <label htmlFor="b">Slice direction</label>
         <div className="ctl">
-          <input id="b" type="range" min={0} max={179} value={bearing} onChange={(e) => setBearing(+e.target.value)} />
+          <label className="follow">
+            <input type="checkbox" checked={followSun} onChange={(e) => { setFollowSun(e.target.checked); setBearing(bearing); }} />
+            Follow the {body === "sun" ? "Sun" : "Earth"}
+          </label>
+          <input id="b" type="range" min={0} max={359} value={bearing} disabled={followSun}
+            onChange={(e) => setBearing(+e.target.value)} />
           <output>{compass(bearing + 180)} to {compass(bearing)}, {bearing}°</output>
         </div>
 

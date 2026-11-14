@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
+from app.services import polar_dem
+
 DEM_DIR = Path(__file__).resolve().parents[2] / "data" / "dem"
 
 
@@ -45,6 +47,17 @@ def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) 
     dems = sorted(DEM_DIR.glob("*.tif")) if DEM_DIR.exists() else []
     if dems:
         pass  # real DEM goes here
+    if polar_dem.covered(lat):
+        # sample the regional south-pole model so this tile matches the 2D map exactly
+        half_m = size_km * 500.0
+        v = np.linspace(-half_m, half_m, res)
+        east, south = np.meshgrid(v, v)  # col → east, row → south (row 0 = north edge)
+        (nx, ny), (ex, ey) = polar_dem.local_axes(lon)
+        x0, y0 = polar_dem.project(lat, lon)
+        north = -south
+        x = x0 + (north * nx + east * ex) / 1000
+        y = y0 + (north * ny + east * ey) / 1000
+        return polar_dem.elevation_m(x, y), True
     return _synthetic_crater(size_km, res), True
 
 

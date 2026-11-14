@@ -18,6 +18,7 @@ Fallback Source:
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import math
+from pathlib import Path
 from typing import Any, Dict, Tuple
 import requests
 
@@ -26,6 +27,8 @@ import requests
 # Keyed by UTC timestamp string: "YYYY-MM-DD HH:MM"
 _HORIZONS_SUBPOINTS_CACHE: Dict[str, Dict[str, Any]] = {}
 _LAST_EPHEMERIS_SOURCE: str = "NASA JPL Horizons Live REST API (DE441)"
+_LAST_FAILURE_TS: float = 0.0
+FETCH_MARGIN_DAYS = 30
 
 
 def parse_iso_utc(date_str: str | None) -> datetime:
@@ -60,7 +63,7 @@ def prefetch_horizons_window(
     from the live NASA JPL Horizons API (`COMMAND='301'`, `CENTER='500@399'`, `QUANTITIES='14,15'`)
     in a single HTTP GET request and stores all steps in `_HORIZONS_SUBPOINTS_CACHE`.
     """
-    global _LAST_EPHEMERIS_SOURCE
+    global _LAST_EPHEMERIS_SOURCE, _LAST_FAILURE_TS
     start_dt = center_dt - timedelta(days=scan_days)
     stop_dt = center_dt + timedelta(days=scan_days)
 
@@ -74,7 +77,18 @@ def prefetch_horizons_window(
         and center_key in _HORIZONS_SUBPOINTS_CACHE
         and stop_key in _HORIZONS_SUBPOINTS_CACHE
     ):
+        _LAST_EPHEMERIS_SOURCE = "NASA JPL Horizons Live REST API (DE441)"
         return True
+
+    # Offline: don't make every request wait for a 10 s timeout; retry at most once a minute
+    if _LAST_FAILURE_TS and (datetime.now(timezone.utc).timestamp() - _LAST_FAILURE_TS) < 60:
+        _LAST_EPHEMERIS_SOURCE = _offline_source_label()
+        return False
+
+    # Fetch a wider span than asked so scrubbing the date slider reuses the cache
+    # (rows land on the same 6-hour grid as long as callers use 6-hour-aligned times)
+    start_key = (start_dt - timedelta(days=FETCH_MARGIN_DAYS)).strftime("%Y-%m-%d %H:%M")
+    stop_key = (stop_dt + timedelta(days=FETCH_MARGIN_DAYS)).strftime("%Y-%m-%d %H:%M")
 
     params = {
         "format": "json",
@@ -130,12 +144,20 @@ def prefetch_horizons_window(
 
         if parsed_count > 0:
             _LAST_EPHEMERIS_SOURCE = "NASA JPL Horizons Live REST API (DE441)"
+            _LAST_FAILURE_TS = 0.0
             return True
     except Exception:
         pass
 
-    _LAST_EPHEMERIS_SOURCE = "Analytical IAU/JPL Lunar Ephemeris (Offline Fallback)"
+    _LAST_FAILURE_TS = datetime.now(timezone.utc).timestamp()
+    _LAST_EPHEMERIS_SOURCE = _offline_source_label()
     return False
+
+
+def _offline_source_label() -> str:
+    if _skyfield_subpoints(datetime.now(timezone.utc)) is not None:
+        return SKYFIELD_SOURCE
+    return "Analytical IAU/JPL Lunar Ephemeris (Offline Fallback)"
 
 
 def get_ephemeris_source() -> str:
@@ -143,16 +165,69 @@ def get_ephemeris_source() -> str:
     return _LAST_EPHEMERIS_SOURCE
 
 
+# ---------------------------------------------------------------------------
+# Offline fallback: NASA JPL DE421 ephemeris + lunar principal-axis frame via Skyfield.
+# Agrees with live JPL Horizons to ~0.01°. (The analytical series further below was off by
+# up to ~28° in longitude with flipped latitude signs, enough to flip polar sites lit/dark,
+# so it is now only a last resort when Skyfield is not installed.)
+# ---------------------------------------------------------------------------
+SKYFIELD_SOURCE = "NASA JPL DE421 via Skyfield (offline)"
+_SKYFIELD: Any = None
+
+
+def _kernel_dir() -> Path:
+    shared = Path(__file__).resolve().parent.parent / "lunar-navigator" / "backend" / "data" / "kernels"
+    own = Path(__file__).resolve().parent / "data" / "kernels"
+    return shared if (shared / "de421.bsp").exists() else own
+
+
+def _skyfield_subpoints(utc_dt: datetime) -> Dict[str, Any] | None:
+    global _SKYFIELD
+    try:
+        if _SKYFIELD is None:
+            from skyfield.api import Loader
+            from skyfield.planetarylib import PlanetaryConstants
+
+            kdir = _kernel_dir()
+            kdir.mkdir(parents=True, exist_ok=True)
+            load = Loader(str(kdir))
+            eph = load("de421.bsp")
+            pc = PlanetaryConstants()
+            pc.read_text(load("moon_080317.tf"))
+            pc.read_text(load("pck00008.tpc"))
+            pc.read_binary(load("moon_pa_de421_1900-2050.bpc"))
+            _SKYFIELD = (load.timescale(), eph, pc.build_frame_named("MOON_ME_DE421"))
+        ts, eph, frame = _SKYFIELD
+        t = ts.from_datetime(utc_dt)
+        s_lat, s_lon, _ = (eph["sun"] - eph["moon"]).at(t).frame_latlon(frame)
+        e_lat, e_lon, _ = (eph["earth"] - eph["moon"]).at(t).frame_latlon(frame)
+        wrap = lambda d: ((d + 180.0) % 360.0) - 180.0  # noqa: E731
+        return {
+            "julian_date": round(julian_date(utc_dt), 5),
+            "sub_solar_lat": float(s_lat.degrees),
+            "sub_solar_lon": wrap(float(s_lon.degrees)),
+            "sub_earth_lat": float(e_lat.degrees),
+            "sub_earth_lon": wrap(float(e_lon.degrees)),
+            "source": SKYFIELD_SOURCE,
+        }
+    except Exception:
+        return None
+
+
 def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, Any]:
     """
     Returns Selenographic Sub-Solar and Sub-Earth (Lat, Lon) in degrees.
-    Checks the live NASA JPL Horizons cache first, and falls back to analytical
-    IAU/JPL lunar orientation equations if offline or outside the cached grid.
+    Checks the live NASA JPL Horizons cache first, then the offline JPL DE421 ephemeris
+    (Skyfield), and only then the rough analytical series.
     """
     utc_dt = dt.astimezone(timezone.utc)
     key = utc_dt.strftime("%Y-%m-%d %H:%M")
     if key in _HORIZONS_SUBPOINTS_CACHE:
         return _HORIZONS_SUBPOINTS_CACHE[key]
+
+    precise = _skyfield_subpoints(utc_dt)
+    if precise is not None:
+        return precise
 
     jd = julian_date(utc_dt)
     d = jd - 2451545.0  # Days since J2000.0

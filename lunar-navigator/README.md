@@ -25,12 +25,16 @@ frontend/  React + Vite + TypeScript
   ├─ 3D surface (react-three-fiber), cross-section chart
   └─ Mission panel, beginner/expert mode, explainer cards
         │  REST/JSON (contract in docs/API.md)
-backend/   Python FastAPI
+backend/   Python FastAPI — ONE server for everything (also mounts the A–H engine from /backend)
   ├─ services/ephemeris.py  Skyfield + JPL DE421 + lunar frame → Sun/Earth alt/az, windows
   ├─ services/terrain.py    LOLA DEM → elevation, cross sections, shadow/illumination maps
   ├─ services/scoring.py    power + comms + terrain → viability score + status
   └─ services/mission.py    vehicle, dates, journey → exportable mission plan
 ```
+
+The rail (A–H GO / NO-GO, windows, resources, cautions) and the Compare tab come from the team's
+evaluation engine in `/backend` (see `/system_arch.md`); `app/routers/evaluation.py` mounts it in this server,
+so the frontend talks to a single API. `python backend/main.py` still runs that engine on its own.
 
 The backend works **offline from day 1**. If no real DEM is downloaded, `terrain.py` creates a fake crater so the
 frontend team is never blocked.
@@ -42,7 +46,7 @@ frontend team is never blocked.
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000     # docs at http://localhost:8000/docs
+uvicorn app.main:app --reload --reload-dir app --port 8000     # docs at http://localhost:8000/docs
 
 # frontend (new terminal)
 cd frontend

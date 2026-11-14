@@ -217,3 +217,19 @@ input[type="range"]:disabled { opacity: 0.45; }
 .plain-summary { margin: 0 0 6px; font-size: 14px; line-height: 1.45; }
 .viewpoints { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
 .override-note { margin-bottom: 8px; padding: 6px 10px; border-left: 3px solid var(--yellow); background: var(--panel-2); border-radius: 6px; font-size: 13px; }
+
+/* ---- Topographic view (2D tab) ---- */
+.topo-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.topo-head h3 { margin: 0; }
+.topo-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 10px 0; }
+.topo-slider { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 260px; }
+.topo-svg { display: block; max-width: 900px; margin: 0 auto; border-radius: 8px; }
+.topo-readout { text-align: center; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.topo.paper .topo-prof-bg { fill: #efe6d2; }
+.topo.paper .topo-prof-ground { fill: #d9cba9; }
+.topo.glow .topo-prof-bg { fill: #0d1412; }
+.topo.glow .topo-prof-ground { fill: #163a22; }
+.topo .topo-muted { fill: #8a8470; }
+.topo.glow .topo-muted { fill: #7fa38a; }
+.topo-label { paint-order: stroke; stroke: rgba(10, 12, 16, 0.6); stroke-width: 3px; }
+.topo.paper .topo-label { stroke: rgba(239, 230, 210, 0.85); }

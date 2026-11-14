@@ -1,8 +1,10 @@
 // Main interactive map of the lunar south pole (polar stereographic, top-down). Owner: MAP.
-// The ground is a shaded-relief image lit by the real Sun at the chosen time (from /api/illumination/polar).
+// Integrates live NASA Moon Trek WMTS polar stereographic tiles (LROC WAC optical mosaic, LOLA 30m hillshade,
+// LOLA colorized elevation, and LOLA slope) with real-time dynamic solar illumination & shadow ray-casting.
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
 import { useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
+import { getVisiblePolarTiles, TrekLayerId } from "../../lib/moontrek";
 import { STATUS_UI } from "../rail/LandingList";
 import { normLon } from "../../state/store";
 import type { EvalSite, Features, Illumination } from "../../types";
@@ -14,6 +16,8 @@ interface Props {
   selectedId: string | null;
   custom: { lat: number; lon: number } | null;
   minLat: number; // outer edge of the map, e.g. -80
+  trekLayer?: TrekLayerId;
+  showShadows?: boolean;
   onSelect: (id: string) => void;
   onPick: (lat: number, lon: number) => void;
   onCursor: (p: { lat: number; lon: number } | null) => void;
@@ -21,8 +25,13 @@ interface Props {
 
 const COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
 
-/** Decode the backend's byte grid into a PNG: warm for sunlit ground, cold blue for shadow. */
-function illumToDataUrl(a: Illumination): string {
+/**
+ * Decode the backend's byte grid into a PNG:
+ * - When `overlayMode = false`: opaque warm sunlit ground & cold blue shadow (standalone synthetic map).
+ * - When `overlayMode = true`: translucent golden sunlight & deep blue-black lunar night tint so the
+ *   real NASA Moon Trek satellite tiles underneath remain crisp and visible!
+ */
+function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
   const bin = atob(a.data);
   const n = a.res;
   const c = document.createElement("canvas");
@@ -33,23 +42,58 @@ function illumToDataUrl(a: Illumination): string {
   for (let i = 0; i < n * n; i++) {
     const b = bin.charCodeAt(i);
     const k = i * 4;
-    if (b === 255) { img.data[k + 3] = 0; continue; }
-    const v = b & 127;
-    if (b & 128) {
-      const g = 55 + v * 1.55; // sunlit
-      img.data[k] = Math.min(255, g * 1.08); img.data[k + 1] = g; img.data[k + 2] = g * 0.84;
-    } else {
-      const g = v * 2.4; // shadow: dim, cold
-      img.data[k] = g * 0.55; img.data[k + 1] = g * 0.68; img.data[k + 2] = 18 + g;
+    if (b === 255) {
+      img.data[k + 3] = 0;
+      continue;
     }
-    img.data[k + 3] = 255;
+    const v = b & 127;
+    if (overlayMode) {
+      if (b & 128) {
+        // Sunlit overlay: warm solar tint proportional to slope incidence
+        img.data[k] = 255;
+        img.data[k + 1] = 212;
+        img.data[k + 2] = 128;
+        img.data[k + 3] = Math.round(28 + (v / 127) * 52);
+      } else {
+        // Shadow overlay: deep lunar night shadow that still lets LOLA/WAC craters show through
+        img.data[k] = 5;
+        img.data[k + 1] = 10;
+        img.data[k + 2] = 24;
+        img.data[k + 3] = 165;
+      }
+    } else {
+      if (b & 128) {
+        const g = 55 + v * 1.55; // sunlit
+        img.data[k] = Math.min(255, g * 1.08);
+        img.data[k + 1] = g;
+        img.data[k + 2] = g * 0.84;
+      } else {
+        const g = v * 2.4; // shadow: dim, cold
+        img.data[k] = g * 0.55;
+        img.data[k + 1] = g * 0.68;
+        img.data[k + 2] = 18 + g;
+      }
+      img.data[k + 3] = 255;
+    }
   }
   ctx.putImageData(img, 0, 0);
   return c.toDataURL();
 }
 
 export default function SouthPoleMap(props: Props) {
-  const { sites, features, illum, selectedId, custom, minLat, onSelect, onPick, onCursor } = props;
+  const {
+    sites,
+    features,
+    illum,
+    selectedId,
+    custom,
+    minLat,
+    trekLayer = "lola_shade",
+    showShadows = true,
+    onSelect,
+    onPick,
+    onCursor,
+  } = props;
   const outer = ringRadius(minLat);
   const home = { cx: 0, cy: 0, half: outer * 1.16 };
   const [view, setView] = useState(home);
@@ -62,7 +106,16 @@ export default function SouthPoleMap(props: Props) {
     setView(home);
   }
 
-  const imgUrl = useMemo(() => (illum ? illumToDataUrl(illum) : null), [illum]);
+  const hasTrek = trekLayer !== "none";
+  const trekTiles = useMemo(
+    () => getVisiblePolarTiles(trekLayer, view, outer),
+    [trekLayer, view.cx, view.cy, view.half, outer],
+  );
+
+  const imgUrl = useMemo(
+    () => (illum && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
+    [illum, hasTrek, showShadows],
+  );
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
 
   const toKm = (clientX: number, clientY: number) => {
@@ -118,12 +171,49 @@ export default function SouthPoleMap(props: Props) {
           }
         }}
       >
+        <defs>
+          <clipPath id="south-pole-disc">
+            <circle r={outer} />
+          </clipPath>
+        </defs>
+
         <rect data-ground="1" x={-outer * 3} y={-outer * 3} width={outer * 6} height={outer * 6} fill="var(--map-bg)" />
         <circle data-ground="1" r={outer} fill="#1b1e26" />
-        {imgUrl && illum && (
-          <image data-ground="1" href={imgUrl} x={-illum.half_km} y={-illum.half_km}
-            width={2 * illum.half_km} height={2 * illum.half_km} preserveAspectRatio="none" />
+
+        {/* Live NASA Moon Trek WMTS polar stereographic tiles clipped to the polar circle */}
+        {hasTrek && (
+          <g clipPath="url(#south-pole-disc)">
+            {trekTiles.map((t) => (
+              <image
+                key={t.key}
+                data-ground="1"
+                href={t.url}
+                x={t.x}
+                y={t.y}
+                width={t.size + 0.35}
+                height={t.size + 0.35}
+                preserveAspectRatio="none"
+              />
+            ))}
+          </g>
         )}
+
+        {/* Dynamic solar illumination & shadow layer (translucent overlay when Moon Trek is active) */}
+        {imgUrl && illum && (
+          <image
+            data-ground="1"
+            href={imgUrl}
+            x={-illum.half_km}
+            y={-illum.half_km}
+            width={2 * illum.half_km}
+            height={2 * illum.half_km}
+            preserveAspectRatio="none"
+            clipPath="url(#south-pole-disc)"
+          />
+        )}
+
+        {/* Outer ring border */}
+        <circle r={outer} fill="none" stroke="#3a4252" strokeWidth={1.2 * u} pointerEvents="none" />
 
         {/* sunlight direction: faint parallel rays crossing the map from the Sun's side */}
         {sun && (
@@ -136,7 +226,7 @@ export default function SouthPoleMap(props: Props) {
           </g>
         )}
 
-        {/* crater outlines & names (terrain itself is in the image) */}
+        {/* crater outlines & names */}
         {features?.craters.filter((c) => c.lat <= minLat).map((c) => {
           const p = project(c.lat, c.lon);
           return (
@@ -149,14 +239,14 @@ export default function SouthPoleMap(props: Props) {
           );
         })}
 
-        <g pointerEvents="none" stroke="#fff" strokeOpacity={0.08} fill="none" strokeWidth={0.8 * u}>
+        <g pointerEvents="none" stroke="#fff" strokeOpacity={0.12} fill="none" strokeWidth={0.8 * u}>
           {rings.map((lat) => <circle key={lat} r={ringRadius(lat)} />)}
           {Array.from({ length: 12 }, (_, i) => i * 30).map((lon) => {
             const p = project(minLat, lon);
             return <line key={lon} x1={0} y1={0} x2={p.x} y2={p.y} />;
           })}
         </g>
-        <g pointerEvents="none" fill="#9aa1ad" fontSize={7.5 * u}>
+        <g pointerEvents="none" fill="#c2c8d4" fontSize={7.5 * u} paintOrder="stroke" stroke="#000" strokeWidth={1.6 * u} strokeOpacity={0.65}>
           {rings.map((lat) => <text key={lat} x={2 * u} y={-ringRadius(lat) - 2 * u}>{Math.abs(lat)}°S</text>)}
         </g>
 

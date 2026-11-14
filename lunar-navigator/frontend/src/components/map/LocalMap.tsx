@@ -1,11 +1,16 @@
 // Local 20 km map around the site, with tabs: Sun position / Shadows / Rims. Owner: MAP.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
+import { destination, fmtLat, fmtLon } from "../../lib/geo";
+import { go } from "../../router";
 import { MapTab, useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
 import { drawGrid } from "./gridCanvas";
+
+const SIZE_KM = 20; // must match the default tile size in api.elevation / api.shadow / api.rims
+const SCALE_KM = 5;
 
 const TABS: { key: MapTab; label: string; help: string }[] = [
   { key: "sun", label: "☀️ Sun position", help: explain.sunTab },
@@ -36,6 +41,17 @@ export default function LocalMap() {
     });
   }, [elev.data, shadow.data, rims.data, tab]);
 
+  // Pointer → position on the tile. Grid convention (terrain.py): row 0 = north edge, col 0 = west edge, site at the center.
+  const [hover, setHover] = useState<{ lat: number; lon: number; km: number } | null>(null);
+  const at = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!loc) return null;
+    const r = e.currentTarget.getBoundingClientRect();
+    const east = ((e.clientX - r.left) / r.width - 0.5) * SIZE_KM;
+    const north = (0.5 - (e.clientY - r.top) / r.height) * SIZE_KM;
+    const km = Math.hypot(east, north);
+    return { ...destination(loc.lat, loc.lon, (Math.atan2(east, north) * 180) / Math.PI, km), km };
+  };
+
   const current = TABS.find((t) => t.key === tab)!;
   return (
     <div className="panel" style={{ flex: 1, minWidth: 360 }}>
@@ -45,8 +61,23 @@ export default function LocalMap() {
           <button key={t.key} className={t.key === tab ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>
         ))}
       </div>
-      <div style={{ position: "relative", marginTop: 8 }}>
-        <canvas ref={canvas} style={{ width: "100%", imageRendering: "pixelated", aspectRatio: "1" }} />
+      <div style={{ position: "relative", marginTop: 8, cursor: "crosshair" }} title="Click to move the site here"
+        onMouseMove={(e) => setHover(at(e))} onMouseLeave={() => setHover(null)}
+        onClick={(e) => { const p = at(e); if (p) go.point(p.lat, p.lon); }}>
+        <canvas ref={canvas} style={{ width: "100%", display: "block", imageRendering: "pixelated", aspectRatio: "1" }} />
+        {/* the site (lander) sits at the center of the tile */}
+        <svg viewBox="-12 -12 24 24" width={26} aria-label="Landing site"
+          style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
+          <circle r={8} fill="none" stroke="#000" strokeWidth={4} />
+          <circle r={8} fill="none" stroke="#fff" strokeWidth={2} />
+          <path d="M-12,0 H-4 M4,0 H12 M0,-12 V-4 M0,4 V12" stroke="#fff" strokeWidth={2} />
+        </svg>
+        {/* scale bar */}
+        <div style={{ position: "absolute", left: 8, bottom: 8, width: `${(100 * SCALE_KM) / SIZE_KM}%`, pointerEvents: "none",
+          borderBottom: "3px solid #fff", borderLeft: "3px solid #fff", borderRight: "3px solid #fff", height: 6,
+          filter: "drop-shadow(0 0 2px #000)" }}>
+          <span style={{ position: "absolute", bottom: 6, left: 0, right: 0, textAlign: "center", fontSize: 12, color: "#fff" }}>{SCALE_KM} km</span>
+        </div>
         {tab === "sun" && sun && <SunArrow az={sun.azimuth} alt={sun.altitude} />}
         <div style={{ position: "absolute", top: 4, left: "50%", fontSize: 12 }}>N</div>
       </div>
@@ -54,7 +85,11 @@ export default function LocalMap() {
         <div>Lit area: {(shadow.data.lit_fraction * 100).toFixed(0)}%</div>
       )}
       <ExplainCard text={current.help} />
-      {/* TODO(MAP): scale bar, lander marker at center, click-to-set-custom-site, global Moon view (Moon Trek tiles) */}
+      <div className="muted small">
+        {hover ? `${fmtLat(hover.lat)}, ${fmtLon(hover.lon)} · ${hover.km.toFixed(1)} km from the site · click to move the site here`
+          : `⊕ = landing site · tile is ${SIZE_KM} km across · hover for coordinates, click to move the site`}
+      </div>
+      {/* TODO(MAP): global Moon view (Moon Trek tiles) */}
     </div>
   );
 }

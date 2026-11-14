@@ -6,12 +6,21 @@ import { useApi } from "../../hooks/useApi";
 import { compass } from "../../lib/geo";
 import { useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
-import { inSection, nearestIndex, shade, stitch, sunHours } from "./profileMath";
+import { Body, inSection, nearestIndex, shade, stitch, sunHours } from "./profileMath";
 
 const W = 1000;
 const TOP = 120; // room above the terrain for the Sun and its rays
 const BOTTOM = 26;
 const LUNAR_DAY_DAYS = 29.53;
+
+// The same shadow maths answers two questions: where does sunlight reach (power), and where is Earth
+// in direct line of sight (communication)? Terrain blocks a radio link exactly like it blocks light.
+const VIEW = {
+  sun: { tab: "☀️ Sunlight (power)", color: "var(--sun)", lit: "Sunlit ground", dark: "Shaded ground", air: "Shadow in the air",
+    down: "🌑 The Sun is below the horizon: lunar night here", total: "Direct sun", pct: "Slice in shade" },
+  earth: { tab: "🌍 Earth contact (comms)", color: "var(--earth)", lit: "Earth in view", dark: "Earth blocked by terrain", air: "No line of sight to Earth",
+    down: "📡 Earth is below the horizon: no direct contact, a relay satellite is needed", total: "Direct Earth contact", pct: "Slice with no contact" },
+} as const;
 
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
@@ -23,6 +32,8 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const [lengthKm, setLengthKm] = useState(8);
   const [exag, setExag] = useState(1);
   const [playing, setPlaying] = useState(false);
+  const [body, setBody] = useState<Body>("sun");
+  const view = VIEW[body];
 
   const seasons = useApi(() => api.seasons(new Date().toISOString()), [], 0);
   const series = useApi(() => (loc ? api.windows(loc, baseTime.toISOString(), LUNAR_DAY_DAYS, 60) : null),
@@ -51,9 +62,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     return p && p.length === 2 ? stitch(p[0], p[1]) : null;
   }, [section.data]);
 
-  const sun = now ? inSection(now.sun_alt, now.sun_az, bearing) : null;
+  // `sun` is the light source for the chosen view: the Sun, or Earth when checking the radio link.
+  const sun = now ? (body === "sun" ? inSection(now.sun_alt, now.sun_az, bearing) : inSection(now.earth_alt, now.earth_az, bearing)) : null;
   const shadeNow = useMemo(() => (slice && sun ? shade(slice, sun) : null), [slice, sun?.tanA, sun?.up, sun?.sunRight]);
-  const hours = useMemo(() => (slice && pts.length ? sunHours(slice, pts, bearing) : null), [slice, pts, bearing]);
+  const hours = useMemo(() => (slice && pts.length ? sunHours(slice, pts, bearing, body) : null), [slice, pts, bearing, body]);
 
   // ---------- geometry → pixels ----------
   const draw = useMemo(() => {
@@ -117,22 +129,29 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   return (
     <div className="panel profile">
-      <h3>Cross section {letter}–{letter}′: sunlight along a slice through the site {section.data?.synthetic && <small>(synthetic terrain)</small>}</h3>
+      <h3>Cross section {letter}–{letter}′: {body === "sun" ? "sunlight" : "contact with Earth"} along a slice through the site {section.data?.synthetic && <small>(synthetic terrain)</small>}</h3>
+
+      <div className="tabs" role="group" aria-label="What to check along the slice" style={{ marginBottom: 8 }}>
+        {(Object.keys(VIEW) as Body[]).map((b) => (
+          <button key={b} className={body === b ? "active" : ""} aria-pressed={body === b} onClick={() => setBody(b)}>{VIEW[b].tab}</button>
+        ))}
+      </div>
 
       {draw && slice ? (
         <svg viewBox={`0 0 ${W} ${draw.H}`} width="100%" role="img"
-          aria-label={`Terrain slice from ${compass(bearing + 180)} to ${compass(bearing)}. ${shadePct}% in shade.`}>
-          {draw.rays.map((r, i) => <line key={i} {...r} stroke="var(--sun)" strokeOpacity={0.55} strokeWidth={1.2} />)}
-          {draw.sunXY && <circle cx={draw.sunXY.x} cy={draw.sunXY.y} r={17} fill="var(--sun)" />}
+          aria-label={`Terrain slice from ${compass(bearing + 180)} to ${compass(bearing)}. ${view.pct}: ${shadePct}%.`}>
+          {draw.rays.map((r, i) => <line key={i} {...r} stroke={view.color} strokeOpacity={0.55} strokeWidth={1.2} />)}
+          {draw.sunXY && <circle cx={draw.sunXY.x} cy={draw.sunXY.y} r={17} fill={view.color} />}
+          {draw.sunXY && body === "earth" && <text x={draw.sunXY.x} y={draw.sunXY.y + 5} textAnchor="middle" fontSize={13} fontWeight={700} fill="#06101f">Earth</text>}
           {!sun?.up && (
             <text x={W / 2} y={44} textAnchor="middle" fill="var(--muted)" fontSize={18}>
-              🌑 The Sun is below the horizon: lunar night here
+              {view.down}
             </text>
           )}
           <path d={draw.groundFill} fill="var(--ground)" />
           <path d={draw.air} fill="var(--shadow-air)" />
           {draw.runs.map((r, i) => (
-            <path key={i} d={r.d} fill="none" stroke={r.lit ? "var(--sun)" : "var(--shade)"} strokeWidth={3.5} strokeLinejoin="round" />
+            <path key={i} d={r.d} fill="none" stroke={r.lit ? view.color : body === "sun" ? "var(--shade)" : "var(--red)"} strokeWidth={3.5} strokeLinejoin="round" />
           ))}
           {/* the landing site */}
           <line x1={draw.X(0)} x2={draw.X(0)} y1={TOP - 30} y2={draw.H} stroke="var(--text)" strokeDasharray="3 4" strokeOpacity={0.5} />
@@ -154,13 +173,13 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <svg viewBox={`0 0 ${W} 18`} width="100%" preserveAspectRatio="none" aria-hidden>
             {hours.map((h, i) => (
               <rect key={i} x={(i * W) / hours.length} width={W / hours.length + 0.6} height={18}
-                fill="var(--sun)" fillOpacity={maxH ? 0.1 + 0.9 * (h / maxH) : 0.1} />
+                fill={view.color} fillOpacity={maxH ? 0.1 + 0.9 * (h / maxH) : 0.1} />
             ))}
           </svg>
           <div className="profile-axis">
             <span><b>{letter}</b> · {compass(bearing + 180)} · −{lengthKm} km</span>
             <span>
-              Direct sun over this lunar day: up to {maxH.toFixed(0)} h of {totalH.toFixed(0)} h
+              {view.total} over this lunar day: up to {maxH.toFixed(0)} h of {totalH.toFixed(0)} h
               ({totalH ? Math.round((100 * maxH) / totalH) : 0}%) · stronger colour = more
             </span>
             <span>+{lengthKm} km · {compass(bearing)} · <b>{letter}′</b></span>
@@ -169,9 +188,9 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       )}
 
       <div className="profile-legend">
-        <span><i className="line sun" />Sunlit ground</span>
-        <span><i className="line shade" />Shaded ground</span>
-        <span><i className="swatch air" />Shadow in the air</span>
+        <span><i className="line sun" style={{ background: view.color }} />{view.lit}</span>
+        <span><i className="line shade" style={body === "earth" ? { background: "var(--red)" } : undefined} />{view.dark}</span>
+        <span><i className="swatch air" />{view.air}</span>
         <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}`}</span>
       </div>
 
@@ -181,7 +200,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <Stat label="Sun elevation" value={now ? `${now.sun_alt.toFixed(1)}°` : "…"} />
           <Stat label="Sun azimuth" value={now ? `${now.sun_az.toFixed(0)}° (${compass(now.sun_az)})` : "…"} />
           <Stat label="Apparent angle in slice" value={sun ? (sun.up ? `${sun.apparent.toFixed(1)}°` : "below horizon") : "…"} />
-          <Stat label="Slice in shade" value={shadePct != null ? `${shadePct}%` : "…"} />
+          <Stat label={view.pct} value={shadePct != null ? `${shadePct}%` : "…"} />
           <Stat label="Earth" value={now ? (now.earth_alt > 0 ? `${now.earth_alt.toFixed(1)}° up · contact ✓` : "below horizon · no contact") : "…"} />
           <Stat label="Moment" value={now ? `Day ${dayN.toFixed(1)} of ${LUNAR_DAY_DAYS}` : "…"} sub={now ? new Date(now.time).toUTCString().slice(5, 22) + " UTC" : ""} />
         </div>
@@ -229,8 +248,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         </div>
       </div>
 
-      <ExplainCard text={explain.profile} />
-      {/* TODO(SKY3D): Earth line-of-sight shading (same maths with earth_alt / earth_az) for a comms view */}
+      <ExplainCard text={body === "sun" ? explain.profile : explain.profileEarth} />
     </div>
   );
 }

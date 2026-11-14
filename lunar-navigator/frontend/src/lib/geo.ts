@@ -24,3 +24,11 @@ export const compass = (az: number) => POINTS[Math.round((((az % 360) + 360) % 3
 
 export const fmtLat = (lat: number) => `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? "S" : "N"}`;
 export const fmtLon = (lon: number) => `${Math.abs(lon).toFixed(2)}° ${lon < 0 ? "W" : "E"}`;
+
+/** Point reached by going `distKm` from (lat, lon) along `bearing` (degrees clockwise from north). Works at the poles. */
+export function destination(lat: number, lon: number, bearing: number, distKm: number) {
+  const d = distKm / R_MOON_KM, b = bearing * D, p1 = lat * D;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 = lon * D + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return { lat: p2 / D, lon: ((l2 / D + 540) % 360) - 180 };
+}

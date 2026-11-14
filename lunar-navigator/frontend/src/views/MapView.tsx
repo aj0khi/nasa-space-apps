@@ -47,13 +47,20 @@ export default function MapView({ onCursor }: Props) {
 
       <div className="map-overlay top-mid sunbox" aria-live="polite">
         <span className="sundot" />
-        {a ? (
+        {a ? (mode === "expert" ? (
           <span>
             Sun over <b>{fmtLon(a.sun.subsolar_lon)}</b> ·{" "}
             <b>{a.sun.elevation_at_pole >= 0 ? "+" : ""}{a.sun.elevation_at_pole.toFixed(1)}°</b> at the pole ·{" "}
+            sub-solar lat <b>{a.sun.subsolar_lat.toFixed(2)}°</b> ·{" "}
             <b>{Math.round(a.lit_fraction * 100)}%</b> of this map lit
           </span>
-        ) : <span className="muted">Lighting the terrain…</span>}
+        ) : (
+          <span>
+            {a.sun.elevation_at_pole > 0 ? "The Sun skims the horizon" : "The Sun is just below the horizon at the pole"}
+            {" "}on the side marked “Sun”. Shadows stretch away from it ·{" "}
+            <b>{Math.round(a.lit_fraction * 100)}%</b> of the map is in sunlight
+          </span>
+        )) : <span className="muted">Lighting the terrain…</span>}
         {illum.loading && a && <span className="spinner" aria-label="updating" />}
       </div>
 

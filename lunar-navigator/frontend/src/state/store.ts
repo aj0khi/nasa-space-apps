@@ -26,6 +26,7 @@ interface AppState {
   baseTime: Date; // the date the user picked; the time slider runs one lunar day from here
   mode: Mode;
   tab: MapTab;
+  sunOverride: { alt: number; az: number } | null; // expert "what if": replaces the computed Sun in the cross section
 
   setEvaluation: (e: EvalAll) => void;
   setDetails: (d: SiteDetails | null) => void;
@@ -37,6 +38,7 @@ interface AppState {
   setBaseTime: (t: Date) => void;
   setMode: (m: Mode) => void;
   setTab: (t: MapTab) => void;
+  setSunOverride: (s: { alt: number; az: number } | null) => void;
   sites: () => EvalSite[];
   location: () => { lat: number; lon: number; site?: EvalSite } | null;
 }
@@ -51,6 +53,7 @@ export const useApp = create<AppState>((set, get) => ({
   baseTime: new Date(),
   mode: "beginner",
   tab: "sun",
+  sunOverride: null,
 
   setEvaluation: (evaluation) => set({ evaluation }),
   setDetails: (details) => set({ details }),
@@ -62,6 +65,7 @@ export const useApp = create<AppState>((set, get) => ({
   setBaseTime: (t) => set({ baseTime: t, time: t }),
   setMode: (mode) => set({ mode }),
   setTab: (tab) => set({ tab }),
+  setSunOverride: (sunOverride) => set({ sunOverride }),
   sites: () => get().evaluation?.sites ?? NO_SITES,
   location: () => {
     const { custom, selectedId, evaluation } = get();

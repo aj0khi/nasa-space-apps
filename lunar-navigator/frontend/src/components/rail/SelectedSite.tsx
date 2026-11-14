@@ -62,6 +62,10 @@ function EngineSiteCard({ d, id, fallbackName, loading }: { d: SiteDetails | nul
   const v = d.visibility;
   const sun = d.ephemeris.sun;
   const earth = d.ephemeris.earth;
+  const expert = mode === "expert";
+  // Beginner: one sentence that answers "is this a good place to land right now?"
+  const plain = `${v.is_sunlit ? "Sunny" : "In shadow"} right now and ${v.has_earth_comm ? "can call Earth" : "can't see Earth"}. `
+    + (w.currently_sunlit ? `About ${Math.round(w.remaining_sunlit_days)} days of sunlight left.` : w.hours_until_sunlight > 0 ? `The Sun reaches it in about ${Math.round(w.hours_until_sunlight)} hours.` : "");
   const runCheck = async () => {
     setCheck("loading");
     try { setCheck(await api.horizonsValidate(d.id, sixHourKey(time))); } catch (e) { setCheck({ error: String(e) }); }
@@ -70,15 +74,16 @@ function EngineSiteCard({ d, id, fallbackName, loading }: { d: SiteDetails | nul
   return (
     <section className="rail-sec selected">
       {header}
+      {!expert && <p className="plain-summary"><span className={`mark ${ui.cls}`}>{ui.mark} {ui.word}</span> · {plain}</p>}
       <dl className="facts">
         <dt>Right now <span className="muted small">({d.query_timestamp_utc.slice(5, 16).replace("T", " ")} UTC)</span></dt>
         <dd>
           <ul className="plain">
             <li className={v.is_sunlit ? "now-on" : "now-off"}>
               {v.is_sunlit ? "☀ In sunlight" : "☾ In shadow"}
-              <span className="muted"> · Sun {sun.elevation_deg.toFixed(1)}° vs skyline {v.sun_horizon_deg.toFixed(1)}° ({v.sun_margin_deg >= 0 ? "+" : ""}{v.sun_margin_deg.toFixed(1)}°)</span>
+              {expert && <span className="muted"> · Sun {sun.elevation_deg.toFixed(1)}° vs skyline {v.sun_horizon_deg.toFixed(1)}° ({v.sun_margin_deg >= 0 ? "+" : ""}{v.sun_margin_deg.toFixed(1)}°)</span>}
             </li>
-            {d.ephemeris.relief_dip_deg !== 0 && (
+            {expert && d.ephemeris.relief_dip_deg !== 0 && (
               <li className="muted small">
                 Angles include {d.ephemeris.relief_dip_deg > 0 ? "+" : ""}{d.ephemeris.relief_dip_deg}° because the site sits {Math.round(d.coordinates.elevation_m).toLocaleString()} m
                 {d.coordinates.elevation_m >= 0 ? " up: from high ground you see past the flat horizon." : " down."}
@@ -86,7 +91,7 @@ function EngineSiteCard({ d, id, fallbackName, loading }: { d: SiteDetails | nul
             )}
             <li className={v.has_earth_comm ? "now-on" : "now-off"}>
               {v.has_earth_comm ? "📡 Earth in view" : "📡 No Earth contact"}
-              <span className="muted"> · Earth {earth.elevation_deg.toFixed(1)}° vs skyline {v.earth_horizon_deg.toFixed(1)}°</span>
+              {expert && <span className="muted"> · Earth {earth.elevation_deg.toFixed(1)}° vs skyline {v.earth_horizon_deg.toFixed(1)}°</span>}
             </li>
           </ul>
         </dd>
@@ -94,26 +99,30 @@ function EngineSiteCard({ d, id, fallbackName, loading }: { d: SiteDetails | nul
         <dt>Status</dt>
         <dd>
           <span className={`mark ${ui.cls}`}>{ui.mark} {ui.word}</span>
-          <span className="muted"> · suitability {d.suitability_score}/100</span>
+          {expert && <span className="muted"> · suitability {d.suitability_score}/100</span>}
         </dd>
 
         <dt>Window</dt>
         <dd>
           <div>{w.window_label}</div>
-          <div className="muted small">
+          {expert && <div className="muted small">
             {fmtUtc(parseEngineUtc(w.window_start_utc))} → {fmtUtc(parseEngineUtc(w.window_end_utc))}
             {w.currently_sunlit
               ? ` · ${w.remaining_sunlit_days} d of sunlight left (${w.total_window_days} d window)`
               : w.hours_until_sunlight > 0 ? ` · sunlight in ${w.hours_until_sunlight} h` : ""}
-          </div>
-          <div className="muted small">Next 30 days: sunlit {w.sunlit_pct_30d}% · Earth contact {w.dte_comm_pct_30d}%</div>
+          </div>}
+          <div className="muted small">{expert
+            ? `Next 30 days: sunlit ${w.sunlit_pct_30d}% · Earth contact ${w.dte_comm_pct_30d}%`
+            : `Over the next month: sunny ${Math.round(w.sunlit_pct_30d)}% of the time, can call Earth ${Math.round(w.dte_comm_pct_30d)}% of the time.`}</div>
         </dd>
 
         <dt>Available resources</dt>
         <dd>
           <ul className="plain">
             {d.resources.map((r) => <li key={r}>{r}</li>)}
-            <li className="muted small">Slope {d.slope_deg}° · roughness {d.roughness_m} m · {d.ice_distance_km} km to {d.psr_name}</li>
+            <li className="muted small">{expert
+              ? `Slope ${d.slope_deg}° · roughness ${d.roughness_m} m · ${d.ice_distance_km} km to ${d.psr_name}`
+              : `Ground is ${d.slope_deg < 5 ? "fairly flat" : d.slope_deg <= 10 ? "a bit sloped" : "steep"} · ice may be ${d.ice_distance_km} km away in ${d.psr_name}`}</li>
           </ul>
         </dd>
 

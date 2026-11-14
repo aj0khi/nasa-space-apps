@@ -6,12 +6,21 @@ import { useApi } from "../../hooks/useApi";
 import { compass } from "../../lib/geo";
 import { useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
+import { useExpert } from "../learn/ModeGate";
 import { Body, inSection, nearestIndex, shade, stitch, sunHours } from "./profileMath";
 
 const W = 1000;
 const TOP = 120; // room above the terrain for the Sun and its rays
 const BOTTOM = 26;
 const LUNAR_DAY_DAYS = 29.53;
+
+// Four ways to look at the site, relative to the Sun. `offset` turns the slice bearing (A end) away from the Sun's azimuth.
+const VIEWPOINTS = [
+  { key: "right", label: "Sun on the right", offset: 0, note: "Sun on your right: shadows fall to the left, along the slice." },
+  { key: "left", label: "Sun on the left", offset: 180, note: "Sun on your left: shadows fall to the right, along the slice." },
+  { key: "front", label: "Facing the Sun", offset: 90, note: "You face the Sun: it shines across the slice, so shadows fall toward you, not along this line." },
+  { key: "back", label: "Sun behind you", offset: 270, note: "Sun behind you: shadows fall away from you, not along this line." },
+] as const;
 
 // The same shadow maths answers two questions: where does sunlight reach (power), and where is Earth
 // in direct line of sight (communication)? Terrain blocks a radio link exactly like it blocks light.
@@ -35,7 +44,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const [exag, setExag] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [body, setBody] = useState<Body>("sun");
+  const [viewpoint, setViewpoint] = useState<(typeof VIEWPOINTS)[number]["key"]>("right");
   const view = VIEW[body];
+  const override = useApp((s) => s.sunOverride);
+  const expert = useExpert();
 
   const seasons = useApi(() => api.seasons(new Date().toISOString()), [], 0);
   const series = useApi(() => (loc ? api.windows(loc, baseTime.toISOString(), LUNAR_DAY_DAYS, 60) : null),
@@ -43,13 +55,16 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   const pts = series.data?.series ?? [];
   const idx = pts.length ? nearestIndex(pts, time) : 0;
-  const now = pts[idx];
+  const ephem = pts[idx];
+  // Expert "what if": a manual Sun position (Mission setup) replaces the ephemeris Sun.
+  const now = ephem && override ? { ...ephem, sun_alt: override.alt, sun_az: override.az } : ephem;
 
   // Following the Sun: A′ (away from the Sun) → site → A (toward the Sun). Snapped to 5° so the slice
-  // isn't refetched every hour of slider movement.
+  // isn't refetched every hour of slider movement. The viewpoint buttons turn the slice relative to the Sun.
   // In the Earth-contact view the slice follows Earth instead (A = toward Earth).
+  const vp = VIEWPOINTS.find((v) => v.key === viewpoint)!;
   const targetAz = now ? (body === "sun" ? now.sun_az : now.earth_az) : 0;
-  const bearing = followSun && now ? (Math.round(targetAz / 5) * 5) % 360 : manualBearing;
+  const bearing = followSun && now ? (Math.round((targetAz + vp.offset) / 5) * 5) % 360 : manualBearing;
   const section = useApi(() => (loc ? api.crossSection(loc, [
     { azimuth: (bearing + 180) % 360, length_km: lengthKm },
     { azimuth: bearing, length_km: lengthKm },
@@ -130,7 +145,8 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     return { H, X, groundFill, air, runs, rays, sunXY };
   }, [slice, shadeNow, lengthKm, exag, sun?.up, sun?.tanA, sun?.sunRight]);
 
-  const shadePct = shadeNow ? Math.round((100 * shadeNow.lit.filter((l) => !l).length) / shadeNow.lit.length) : null;
+  const siteLit = slice && shadeNow ? shadeNow.lit[slice.x.reduce((b, x, i) => (Math.abs(x) < Math.abs(slice.x[b]) ? i : b), 0)] : null;
+  const shadePct = shadeNow ?Math.round((100 * shadeNow.lit.filter((l) => !l).length) / shadeNow.lit.length) : null;
   const maxH = hours ? Math.max(...hours) : 0;
   const totalH = pts.length ? (Date.parse(pts[pts.length - 1].time) - Date.parse(pts[0].time)) / 3.6e6 : 0;
   const dayN = now ? (Date.parse(now.time) - Date.parse(pts[0].time)) / 864e5 : 0;
@@ -144,6 +160,22 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <button key={b} className={body === b ? "active" : ""} aria-pressed={body === b} onClick={() => setBody(b)}>{VIEW[b].tab}</button>
         ))}
       </div>
+
+      {body === "sun" && (
+        <div className="viewpoints">
+          <span className="muted small">View the site with the</span>
+          <div className="tabs" role="group" aria-label="Viewpoint relative to the Sun">
+            {VIEWPOINTS.map((v) => (
+              <button key={v.key} className={followSun && viewpoint === v.key ? "active" : ""} aria-pressed={followSun && viewpoint === v.key}
+                onClick={() => { setViewpoint(v.key); setFollowSun(true); }}>{v.label}</button>
+            ))}
+          </div>
+          {followSun && <span className="muted small">{vp.note}</span>}
+        </div>
+      )}
+      {override && (
+        <div className="override-note">⚠ Manual Sun position ({override.alt}°, {override.az}°) from Mission setup. <button className="link" onClick={() => useApp.getState().setSunOverride(null)}>Use the real Sun</button></div>
+      )}
 
       {draw && slice ? (
         <svg viewBox={`0 0 ${W} ${draw.H}`} width="100%" role="img"
@@ -205,8 +237,20 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
       <div className="profile-stats">
         <PlanView bearing={bearing} sunAz={now ? targetAz : undefined} sunUp={!!sun?.up} />
+        {!expert ? (
+          <div className="stats">
+            <Stat label={body === "sun" ? "Landing spot" : "Call home?"}
+              value={siteLit == null ? "…" : body === "sun" ? (siteLit ? "☀ In sunlight" : "☾ In shadow") : (siteLit ? "📡 Yes, Earth in view" : "📡 No, needs a relay")} />
+            <Stat label="Where the Sun is" value={now ? (now.sun_alt > 0 ? `Low in the ${compass(now.sun_az)}` : "Below the horizon") : "…"}
+              sub={now && now.sun_alt > 0 ? `${now.sun_alt < 3 ? "Barely above the horizon, like sunrise" : "Above the horizon"}` : undefined} />
+            <Stat label="Shadows point" value={now && now.sun_alt > 0 ? compass(now.sun_az + 180) : "—"} />
+            <Stat label={body === "sun" ? "This slice in shadow" : "This slice cut off from Earth"} value={shadePct != null ? `${shadePct}%` : "…"} />
+            <Stat label="Moment" value={now ? `Day ${dayN.toFixed(1)} of ${LUNAR_DAY_DAYS}` : "…"} sub="one lunar day ≈ 29.5 Earth days" />
+          </div>
+        ) : (
         <div className="stats">
-          <Stat label="Sun elevation" value={now ? `${now.sun_alt.toFixed(1)}°` : "…"} sub="geometric, at the slider time" />
+          <Stat label="Sun elevation" value={now ? `${now.sun_alt.toFixed(1)}°` : "…"} sub={override ? "manual override" : "geometric, at the slider time"} />
+          <Stat label="Shadow azimuth" value={now && now.sun_alt > 0 ? `${((now.sun_az + 180) % 360).toFixed(0)}° (${compass(now.sun_az + 180)})` : "—"} sub={now && now.sun_alt > 0 ? `1 m rock → ${(1 / Math.tan((now.sun_alt * Math.PI) / 180)).toFixed(0)} m shadow` : undefined} />
           <Stat label="Sun azimuth" value={now ? `${now.sun_az.toFixed(0)}° (${compass(now.sun_az)})` : "…"} />
           <Stat label="Apparent angle in slice" value={sun ? (sun.up ? `${sun.apparent.toFixed(1)}°` : "below horizon") : "…"} />
           <Stat label={view.pct} value={shadePct != null ? `${shadePct}%` : "…"} />
@@ -218,6 +262,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           )}
           <Stat label="Moment" value={now ? `Day ${dayN.toFixed(1)} of ${LUNAR_DAY_DAYS}` : "…"} sub={now ? new Date(now.time).toUTCString().slice(5, 22) + " UTC" : ""} />
         </div>
+        )}
       </div>
 
       <div className="controls">
@@ -242,6 +287,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <output>Day {dayN.toFixed(1)}</output>
         </div>
 
+        {expert && <>
         <label htmlFor="b">Slice direction</label>
         <div className="ctl">
           <label className="follow">
@@ -265,6 +311,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
             <button key={e} className={exag === e ? "active" : ""} onClick={() => setExag(e)}>{e === 1 ? "1:1" : `×${e}`}</button>
           ))}
         </div>
+        </>}
       </div>
 
       <ExplainCard text={body === "sun" ? explain.profile : explain.profileEarth} />

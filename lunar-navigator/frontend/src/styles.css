@@ -177,3 +177,23 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
 .lightnow.on { color: var(--sun); } .lightnow.off { color: #7f8db3; }
 .now-on { color: var(--text); } .now-off { color: #9fb0d6; }
 @media (max-width: 960px) { .map-overlay.top-mid { top: auto; bottom: 120px; white-space: normal; max-width: calc(100% - 24px); } }
+
+/* ---------- A–H engine integration ---------- */
+.error { color: #ff9b9b; }
+.landsummary { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin: -4px 0 8px; flex-wrap: wrap; }
+.landopts { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.landopts select { padding: 2px 4px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; }
+.source { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.source::before { content: "●"; margin-right: 5px; color: #7f8db3; }
+.source.live::before { color: var(--green); }
+.rail-sec h2 .spinner { display: inline-block; vertical-align: middle; margin-left: 6px; }
+label.follow { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 13px; color: var(--muted); }
+input[type="range"]:disabled { opacity: 0.45; }
+.cmp-picks { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.cmp-pick { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cmp-pick select { padding: 4px 6px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; max-width: 260px; }
+.cmp-reco { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--green); background: var(--panel-2); border-radius: 6px; }
+.cmp-reco ul { margin: 6px 0 0; padding-left: 18px; }
+.cmp-card { flex: 1; min-width: 300px; }
+.cmp-card.best { border-color: var(--green); }
+.viewtabs button { white-space: nowrap; }

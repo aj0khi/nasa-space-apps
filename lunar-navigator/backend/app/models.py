@@ -70,17 +70,6 @@ class Windows(BaseModel):
     series: list[SeriesPoint]
 
 
-class SiteNow(BaseModel):
-    id: str
-    sun_alt: float
-    sun_az: float
-    sun_horizon: float
-    sun_visible: bool
-    earth_alt: float
-    earth_az: float
-    earth_horizon: float
-    earth_visible: bool
-
 
 class SunInfo(BaseModel):
     subsolar_lat: float

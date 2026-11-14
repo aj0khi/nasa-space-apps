@@ -10,8 +10,8 @@ from app.services import ephemeris, terrain
 client = TestClient(app)
 
 
-def test_sites_load():
-    r = client.get("/api/sites")
+def test_catalog_load():
+    r = client.get("/api/catalog")
     assert r.status_code == 200 and len(r.json()) >= 5
 
 
@@ -64,13 +64,6 @@ def test_polar_illumination_map():
     assert len(raw) == 128 * 128
     assert 0.05 < a["lit_fraction"] < 0.95  # some ground lit, some in shadow
     assert abs(a["sun"]["elevation_at_pole"]) < 1.7
-
-
-def test_sites_now_endpoint():
-    r = client.get("/api/sites/now", params={"time": "2026-11-14T12:00:00Z"})
-    assert r.status_code == 200
-    ids = {x["id"] for x in r.json()}
-    assert "shackleton_rim" in ids and "apollo11" not in ids
 
 
 def test_cross_section_shape():

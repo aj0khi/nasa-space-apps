@@ -89,18 +89,6 @@ def horizon_elevation(lat: float, lon: float, azimuth_deg: np.ndarray) -> np.nda
     return np.interp(az % 360, hz_az, hz, period=360)
 
 
-def site_now(lat: float, lon: float, when: datetime) -> dict:
-    """Is the Sun / Earth above the terrain horizon at this site right now?"""
-    s = sun_earth_state(lat, lon, when)
-    sun_hz = float(horizon_elevation(lat, lon, np.array([s.sun.azimuth]))[0])
-    earth_hz = float(horizon_elevation(lat, lon, np.array([s.earth.azimuth]))[0])
-    return {
-        "sun_alt": s.sun.altitude, "sun_az": s.sun.azimuth, "sun_horizon": sun_hz,
-        "sun_visible": s.sun.altitude > sun_hz,  # skyline can be below 0° on a peak
-        "earth_alt": s.earth.altitude, "earth_az": s.earth.azimuth, "earth_horizon": earth_hz,
-        "earth_visible": s.earth.altitude > earth_hz,
-    }
-
 
 def _events(times: list[datetime], alt: np.ndarray, horizon: np.ndarray) -> list[Event]:
     above = alt > horizon

@@ -17,12 +17,12 @@ const EXTENTS = [
 ];
 
 interface Props {
-  letters: Record<string, string>;
   onCursor: (p: { lat: number; lon: number } | null) => void;
 }
 
-export default function MapView({ letters, onCursor }: Props) {
-  const { sites, scores, now, selectedId, custom, mode, time } = useApp();
+export default function MapView({ onCursor }: Props) {
+  const { selectedId, custom, mode, time } = useApp();
+  const sites = useApp((s) => s.sites());
   const [minLat, setMinLat] = useState(-80);
 
   const features = useApi(() => api.features(), [], 0);
@@ -32,7 +32,7 @@ export default function MapView({ letters, onCursor }: Props) {
 
   return (
     <div className="mapview">
-      <SouthPoleMap sites={sites} letters={letters} scores={scores} now={now} features={features.data} illum={a}
+      <SouthPoleMap sites={sites} features={features.data} illum={a}
         selectedId={selectedId} custom={custom} minLat={minLat}
         onSelect={(id) => go.site(id)} onPick={go.point} onCursor={onCursor} />
 
@@ -59,9 +59,9 @@ export default function MapView({ letters, onCursor }: Props) {
 
       <div className="map-overlay bottom-left legend">
         <div className="legend-row">
-          <span><i className="sq green" />good</span>
-          <span><i className="sq yellow" />workable</span>
-          <span><i className="sq red" />risky</span>
+          <span><i className="sq green" />GO</span>
+          <span><i className="sq yellow" />CAUTION</span>
+          <span><i className="sq red" />NO-GO</span>
           <span><i className="sw lit" />sunlit now</span>
           <span><i className="sw dark" />shadow now</span>
           <span><i className="sw psr" />cold-trap crater</span>

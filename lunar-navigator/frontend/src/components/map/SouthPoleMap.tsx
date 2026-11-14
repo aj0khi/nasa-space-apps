@@ -3,13 +3,12 @@
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
 import { useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
-import type { Features, Illumination, Score, Site, SiteNow } from "../../types";
+import { STATUS_UI } from "../rail/LandingList";
+import { normLon } from "../../state/store";
+import type { EvalSite, Features, Illumination } from "../../types";
 
 interface Props {
-  sites: Site[];
-  letters: Record<string, string>;
-  scores: Record<string, Score>;
-  now: Record<string, SiteNow>;
+  sites: EvalSite[]; // A–H from the evaluation engine (GET /api/sites): status + lit right now
   features: Features | null;
   illum: Illumination | null;
   selectedId: string | null;
@@ -20,7 +19,7 @@ interface Props {
   onCursor: (p: { lat: number; lon: number } | null) => void;
 }
 
-const STATUS_COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
+const COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
 
 /** Decode the backend's byte grid into a PNG: warm for sunlit ground, cold blue for shadow. */
 function illumToDataUrl(a: Illumination): string {
@@ -50,7 +49,7 @@ function illumToDataUrl(a: Illumination): string {
 }
 
 export default function SouthPoleMap(props: Props) {
-  const { sites, letters, scores, now, features, illum, selectedId, custom, minLat, onSelect, onPick, onCursor } = props;
+  const { sites, features, illum, selectedId, custom, minLat, onSelect, onPick, onCursor } = props;
   const outer = ringRadius(minLat);
   const home = { cx: 0, cy: 0, half: outer * 1.16 };
   const [view, setView] = useState(home);
@@ -73,7 +72,7 @@ export default function SouthPoleMap(props: Props) {
   };
 
   const rings = useMemo(() => [-89, -88, -87, -86, -85, -84, -82, -80, -75, -70, -65].filter((l) => l <= minLat), [minLat]);
-  const shown = sites.filter((s) => s.lat <= minLat && letters[s.id]);
+  const shown = sites.filter((s) => s.coordinates.lat <= minLat);
 
   // Sun & Earth sit on the horizon around the pole, in the direction of their sub-points
   const body = (lon: number, extra: number) => {
@@ -186,23 +185,23 @@ export default function SouthPoleMap(props: Props) {
 
         {/* sites: square crosshair markers with their letter; filled with sunlight when lit right now */}
         {shown.map((s) => {
-          const p = project(s.lat, s.lon);
-          const st = scores[s.id]?.status;
-          const col = st ? STATUS_COLOR[st] : "#bbb";
-          const lit = now[s.id]?.sun_visible;
+          const p = project(s.coordinates.lat, normLon(s.coordinates.lon));
+          const ui = STATUS_UI[s.status];
+          const col = COLOR[ui.cls];
+          const lit = s.is_sunlit;
           const sel = s.id === selectedId;
           const h = 6 * u;
           return (
             <g key={s.id} transform={`translate(${p.x},${p.y})`} className="marker"
               onPointerUp={(e) => { if (!drag.current?.moved) { e.stopPropagation(); drag.current = null; onSelect(s.id); } }}>
-              <title>{`${letters[s.id]}: ${s.name}${now[s.id] ? (lit ? " · in sunlight now" : " · in shadow now") : ""}`}</title>
+              <title>{`${s.id}: ${s.name} · ${ui.word} · ${lit ? "in sunlight" : "in shadow"} · ${s.has_earth_comm ? "Earth in view" : "no Earth contact"}`}</title>
               {lit && <circle r={12 * u} fill="var(--sun)" opacity={0.28} />}
               {sel && <circle r={14 * u} fill="none" stroke="#fff" strokeWidth={1.6 * u} />}
               <rect x={-h} y={-h} width={2 * h} height={2 * h} fill={lit ? "rgba(232,163,61,0.55)" : "rgba(8,10,16,0.85)"}
                 stroke={col} strokeWidth={1.8 * u} />
               <path d={`M${-h},0H${h}M0,${-h}V${h}`} stroke={col} strokeWidth={1.2 * u} />
               <text x={h + 3 * u} y={-h + 1 * u} fontSize={11 * u} fontWeight={700} fill="#fff"
-                paintOrder="stroke" stroke="#000" strokeWidth={2.5 * u}>{letters[s.id]}</text>
+                paintOrder="stroke" stroke="#000" strokeWidth={2.5 * u}>{s.id}</text>
             </g>
           );
         })}

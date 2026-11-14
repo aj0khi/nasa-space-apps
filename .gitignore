@@ -5,3 +5,5 @@ node_modules/
 __pycache__/
 *.py[cod]
 
+backend/data/kernels/
+.pytest_cache/

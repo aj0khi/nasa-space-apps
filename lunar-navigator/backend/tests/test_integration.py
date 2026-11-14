@@ -6,11 +6,13 @@ engine then uses the offline JPL DE421 ephemeris, which matches live Horizons to
 from datetime import datetime, timezone
 
 import pytest
+import numpy as np
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import evaluation  # noqa: F401  (puts /backend on sys.path)
 from app.services import ephemeris as ours
+from app.services import site_terrain, terrain
 
 import ephemeris as engine_ephemeris  # the /backend engine
 
@@ -77,3 +79,46 @@ def test_engine_and_map_agree_on_the_sun():
         assert abs(e["sun"]["elevation_deg"] - o.sun.altitude) < 0.05, s["id"]
         assert abs(((e["sun"]["azimuth_deg"] - o.sun.azimuth + 180) % 360) - 180) < 0.2, s["id"]
         assert abs(e["earth"]["elevation_deg"] - o.earth.altitude) < 0.05, s["id"]
+
+
+def test_site_evaluation_uses_shared_dem(monkeypatch, tmp_path):
+    dem = tmp_path / "dem.tif"
+    dem.touch()
+    grid = np.full((501, 501), 1000.0, dtype=np.float32)
+    grid[:, 280:] = 1800.0
+    monkeypatch.setattr(terrain, "_dem_path", lambda: dem)
+    monkeypatch.setattr(terrain, "load_elevation", lambda *args: (grid, False))
+    site_terrain._site_grid.cache_clear()
+
+    response = client.get("/api/sites/A", params={"date": WHEN})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["terrain_source"] == "LOLA"
+    assert data["horizon_limit_km"] == 50
+    assert data["coordinates"]["elevation_m"] == 1000
+    assert data["horizon_angles_deg"][90] > data["horizon_angles_deg"][0] + 5
+    assert data["cross_section_aa"]["pad_elevation_m"] == 1000
+    assert data["cross_section_aa"]["profile_points"][20]["in_shadow"] is not data["visibility"]["is_sunlit"]
+    assert all("unverified" not in item.lower() for item in data["resources"])
+    assert any("unverified" in item.lower() for item in data["cautions"])
+
+
+def test_site_evaluation_reports_missing_dem_and_coverage(monkeypatch, tmp_path):
+    monkeypatch.setattr(terrain, "_dem_path", lambda: None)
+    result = client.get("/api/sites/A", params={"date": WHEN})
+    assert result.status_code == 200
+    assert result.json()["terrain_source"] == "synthetic"
+    assert result.json()["horizon_limit_km"] is None
+
+    dem = tmp_path / "dem.tif"
+    dem.touch()
+    monkeypatch.setattr(terrain, "_dem_path", lambda: dem)
+
+    def missing_coverage(*args):
+        raise ValueError("Missing DEM coverage")
+
+    monkeypatch.setattr(terrain, "load_elevation", missing_coverage)
+    site_terrain._site_grid.cache_clear()
+    result = client.get("/api/sites/A", params={"date": WHEN})
+    assert result.status_code == 422
+    assert result.json()["detail"] == "Missing DEM coverage"

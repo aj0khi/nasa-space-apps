@@ -62,8 +62,11 @@ export interface Illumination {
   res: number;
   half_km: number;
   min_lat: number;
-  data: string; // base64 res×res bytes, row 0 = top. 255 = outside; bit 7 = sunlit; bits 0–6 = brightness
-  lit_fraction: number;
+  data: string; // 255 = outside or unknown; bit 7 = sunlit; bits 0–6 = brightness
+  lit_fraction: number | null;
+  coverage_fraction: number;
+  horizon_limit_km: number;
+  pixel_km: number;
   sun: { subsolar_lat: number; subsolar_lon: number; elevation_at_pole: number };
   earth: { sub_lat: number; sub_lon: number; elevation_at_pole: number };
   synthetic: boolean;
@@ -81,7 +84,7 @@ export interface Season {
 }
 
 export interface ElevationGrid { grid: number[][]; pixel_m: number; min: number; max: number; synthetic: boolean }
-export interface Mask { mask: number[][]; lit_fraction?: number | null }
+export interface Mask { mask: number[][]; lit_fraction?: number | null; synthetic: boolean }
 
 export interface Profile { azimuth: number; distance_m: number[]; elevation_m: number[] }
 
@@ -141,6 +144,8 @@ export interface EvalSite {
   coordinates: EvalCoords;
   map_xy: { x: number; y: number };
   slope_deg: number;
+  terrain_source: "LOLA" | "synthetic";
+  horizon_limit_km: number | null;
   status: EvalStatus;
   is_go: boolean;
   badge: string;
@@ -207,6 +212,8 @@ export interface SiteDetails {
   query_timestamp_utc: string;
   coordinates: EvalCoords;
   slope_deg: number;
+  terrain_source: "LOLA" | "synthetic";
+  horizon_limit_km: number | null;
   roughness_m: number;
   ice_distance_km: number;
   psr_name: string;

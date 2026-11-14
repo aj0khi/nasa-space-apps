@@ -1,6 +1,4 @@
-// Topographic view for the 2D tab: contour lines over height bands around the selected site, the Sun's
-// shadows hatched on top, and (like a textbook figure) the A–A′ height profile drawn above the map with
-// dashed lines dropping from every contour crossing. Owner: Visualization.
+// Topographic view for the 2D tab: switch between the contour map and its A–A′ height profile.
 //   heights: /api/terrain/elevation · shadows: /api/terrain/shadow · Sun: /api/ephemeris/state
 import { useMemo, useState } from "react";
 import { api } from "../../api/client";
@@ -16,7 +14,6 @@ const N = 301; // samples across the rotated map (odd, so the A–A′ line is a
 const RES = 241; // samples requested from the backend
 const W = 800; // SVG units: map width
 const P = 230; // profile height
-const GAP = 18;
 const POLE = { lat: -90, lon: 0 };
 
 // Paper: watercolour-style hypsometric tints (low → high). Glow: thread colours on near-black.
@@ -38,6 +35,7 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
   const [dir, setDir] = useState<"sun" | "ns" | "ew" | "manual">("sun");
   const [manual, setManual] = useState(30);
   const [showShadows, setShowShadows] = useState(true);
+  const [display, setDisplay] = useState<"map" | "profile">("map");
   const [hover, setHover] = useState<{ u: number; v: number; z: number } | null>(null);
 
   const hour = hourKey(time);
@@ -139,8 +137,7 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
     }).filter((m) => Math.abs(m.u) < rot.half && Math.abs(m.v) < rot.half);
   }, [rot, sites, center.lat, center.lon, bearing]);
 
-  const mapTop = P + GAP;
-  const H = mapTop + W;
+  const mapTop = 0;
   const s = rot ? W / (2 * rot.half) : 1; // SVG units per km
   const X = (u: number) => W / 2 + u * s, Y = (v: number) => mapTop + W / 2 + v * s;
   const ink = style === "paper" ? "#3b3326" : "#c9f0c0";
@@ -157,6 +154,10 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
           {modeSwitch}
         </div>
         <div className="topo-controls">
+          <div className="tabs" role="group" aria-label="Topographic display">
+            <button aria-pressed={display === "map"} className={display === "map" ? "active" : ""} onClick={() => setDisplay("map")}>Contour map</button>
+            <button aria-pressed={display === "profile"} className={display === "profile" ? "active" : ""} onClick={() => { setDisplay("profile"); setHover(null); }}>A–A′ profile</button>
+          </div>
           <div className="tabs" role="group" aria-label="Map style">
             <button className={style === "paper" ? "active" : ""} onClick={() => setStyle("paper")}>Paper</button>
             <button className={style === "glow" ? "active" : ""} onClick={() => setStyle("glow")}>Glow</button>
@@ -179,13 +180,15 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
         {!rot || !topo || !prof ? (
           <div className="profile-loading">{elev.error ?? "Drawing contours…"}</div>
         ) : (
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="topo-svg" role="img"
-            aria-label={`Contour map ${sizeKm} km across around ${selected ? "the selected site" : "the south pole"}, with the height profile along A–A′ above it.`}
+          <svg viewBox={`0 0 ${W} ${display === "map" ? W : P}`} width="100%" className="topo-svg" role="img"
+            aria-label={display === "map"
+              ? `Contour map ${sizeKm} km across around ${selected ? "the selected site" : "the south pole"}.`
+              : `Height profile along A–A′ around ${selected ? "the selected site" : "the south pole"}.`}
             onMouseLeave={() => setHover(null)}
             onMouseMove={(e) => {
+              if (display !== "map") return;
               const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-              const x = ((e.clientX - r.left) / r.width) * W, y = ((e.clientY - r.top) / r.height) * H;
-              if (y < mapTop) return setHover(null);
+              const x = ((e.clientX - r.left) / r.width) * W, y = ((e.clientY - r.top) / r.height) * W;
               const i = Math.round((x / W) * (N - 1)), j = Math.round(((y - mapTop) / W) * (N - 1));
               const z = rot.z[j * N + i];
               setHover(Number.isNaN(z) ? null : { u: (x - W / 2) / s, v: (y - mapTop - W / 2) / s, z });
@@ -198,13 +201,10 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
               <clipPath id="topo-clip"><rect x={0} y={mapTop} width={W} height={W} rx={6} /></clipPath>
             </defs>
 
-            {/* ---- profile (top) ---- */}
+            {display === "profile" && <g>
             <rect x={0} y={0} width={W} height={P} className="topo-prof-bg" rx={6} />
             {topo.lv.map((l) => (
               <line key={l} x1={0} x2={W} y1={prof.yOf(l)} y2={prof.yOf(l)} stroke={ink} strokeOpacity={0.18} strokeDasharray="10 6" />
-            ))}
-            {prof.crossings.map((c, i) => (
-              <line key={i} x1={c.x} x2={c.x} y1={c.y} y2={P} stroke={ink} strokeOpacity={0.45} strokeWidth={1} strokeDasharray="4 4" />
             ))}
             <path d={`M0,${P} ` + prof.zs.map((z, i) => `L${prof.xOf(i).toFixed(1)},${prof.yOf(z).toFixed(1)}`).join(" ") + ` L${W},${P} Z`}
               className="topo-prof-ground" />
@@ -214,6 +214,7 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
               return <line key={i} x1={prof.xOf(i - 1)} y1={prof.yOf(prof.zs[i - 1])} x2={prof.xOf(i)} y2={prof.yOf(z)}
                 stroke={lit ? "var(--sun)" : "var(--shade)"} strokeWidth={3} strokeLinecap="round" />;
             })}
+            {prof.crossings.map((c, i) => <circle key={i} cx={c.x} cy={c.y} r={2.5} fill={ink} />)}
             {prof.sun?.up && (
               <text x={prof.sun.sunRight ? W - 16 : 16} y={22} textAnchor={prof.sun.sunRight ? "end" : "start"} fontSize={15} fill="var(--sun)">
                 ☀ Sun {prof.sun.sunRight ? "→" : "←"} {expert ? `${prof.sun.apparent.toFixed(1)}° in this slice` : ""}
@@ -225,9 +226,9 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
             <text x={8} y={P - 6} fontSize={13} fontWeight={700} fill={ink}>A′</text>
             <text x={W - 8} y={P - 6} fontSize={13} fontWeight={700} fill={ink} textAnchor="end">A</text>
             {expert && <text x={W / 2} y={P - 4} textAnchor="middle" fontSize={11} className="topo-muted">heights ×{prof.exag.toFixed(0)} · {Math.round(prof.zmin)} to {Math.round(prof.zmax)} m</text>}
+            </g>}
 
-            {/* ---- map (bottom) ---- */}
-            <g clipPath="url(#topo-clip)">
+            {display === "map" && <g clipPath="url(#topo-clip)">
               {raster && <image href={raster} x={0} y={mapTop} width={W} height={W} preserveAspectRatio="none" style={{ imageRendering: "auto" }} />}
               <g transform={`translate(0 ${mapTop}) scale(${W / (N - 1)})`} filter={style === "glow" ? "url(#topo-glow)" : undefined}>
                 {topo.paths.map((d, k) => {
@@ -236,12 +237,8 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
                     strokeWidth={(style === "glow" ? 2.6 : major ? 2.6 : 1.5) * ((N - 1) / W)} strokeLinecap="round" />;
                 })}
               </g>
-              {/* drop lines: from each contour crossing on A–A′ up to the height it marks in the profile */}
               {prof.crossings.map((c, i) => (
-                <g key={i}>
-                  <line x1={c.x} x2={c.x} y1={mapTop} y2={mapTop + W / 2} stroke={ink} strokeOpacity={style === "paper" ? 0.45 : 0.4} strokeWidth={1} strokeDasharray="4 4" />
-                  <circle cx={c.x} cy={mapTop + W / 2} r={2.5} fill={style === "paper" ? "#1d1a14" : "#fff"} />
-                </g>
+                <circle key={i} cx={c.x} cy={mapTop + W / 2} r={2.5} fill={style === "paper" ? "#1d1a14" : "#fff"} />
               ))}
               {/* A–A′ line */}
               <line x1={0} x2={W} y1={mapTop + W / 2} y2={mapTop + W / 2} stroke={style === "paper" ? "#1d1a14" : "#fff"} strokeWidth={2} />
@@ -283,7 +280,7 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
                 <path d={`M0,0V-6M0,0H${scaleKm * s}V-6`} stroke="#fff" strokeWidth={2} fill="none" />
                 <text x={(scaleKm * s) / 2} y={-6} textAnchor="middle" fontSize={12} fill="#fff">{scaleKm} km</text>
               </g>
-            </g>
+            </g>}
           </svg>
         )}
 
@@ -292,13 +289,13 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
             ? `${Math.round(hover.z).toLocaleString()} m · ${Math.abs(hover.u).toFixed(1)} km toward ${hover.u >= 0 ? "A" : "A′"}, ${Math.abs(hover.v).toFixed(1)} km ${hover.v < 0 ? "left" : "right"} of the line`
             : expert && topo
               ? `Contour interval ${topo.step} m (thick every ${topo.step * 5} m) · ${Math.round(topo.min).toLocaleString()} to ${Math.round(topo.max).toLocaleString()} m · A–A′ bearing ${bearing}° (${compass(bearing + 180)} → ${compass(bearing)})`
-              : `${sizeKm} km around ${selected ? (selected.site ? `site ${selected.site.id}` : `${fmtLat(center.lat)}, ${fmtLon(center.lon)}`) : "the south pole"} · hover the map for heights`}
+              : `${sizeKm} km around ${selected ? (selected.site ? `site ${selected.site.id}` : `${fmtLat(center.lat)}, ${fmtLon(center.lon)}`) : "the south pole"}${display === "map" ? " · hover the map for heights" : " · A–A′ profile"}`}
         </div>
         {!expert && (
           <p className="explain">
             Each line joins points at the same height, like the rings a draining bath leaves. Lines packed close together mean steep ground;
-            rings inside rings that get lower are craters. Hatched ground is in shadow right now. The strip on top is the side view along
-            the A–A′ line: each dashed line drops from where a contour crosses A–A′ to the height it marks.
+            rings inside rings that get lower are craters. Hatched ground is in shadow right now.
+            Switch to the A–A′ profile for a side view along the line; dots mark contour crossings in both views.
           </p>
         )}
       </div>

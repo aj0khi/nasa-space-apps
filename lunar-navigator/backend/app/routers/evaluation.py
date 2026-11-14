@@ -23,6 +23,7 @@ from evaluator import (  # noqa: E402
     evaluate_site_details,
     get_terrain_db,
 )
+from app.services.site_terrain import prepare_site
 
 router = APIRouter(tags=["A–H evaluation (system_arch.md)"])
 
@@ -33,7 +34,10 @@ def sites(
     min_duration_days: float = Query(default=3.0, gt=0, le=30),
 ) -> dict[str, Any]:
     """All candidate sites A–H with live GO / CAUTION / NO-GO status."""
-    return evaluate_all_sites(date_str=date, min_duration_days=min_duration_days)
+    try:
+        return evaluate_all_sites(date_str=date, min_duration_days=min_duration_days, terrain_provider=prepare_site)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/sites/{site_id}")
@@ -44,9 +48,11 @@ def site_details(
 ) -> dict[str, Any]:
     """Full inspection data for one site: window, resources, cautions, horizon mask, A–A′ slice."""
     try:
-        return evaluate_site_details(site_id, date_str=date, min_duration_days=min_duration_days)
+        return evaluate_site_details(site_id, date_str=date, min_duration_days=min_duration_days, terrain_provider=prepare_site)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/compare")
@@ -59,9 +65,11 @@ def compare(
 ) -> dict[str, Any]:
     """Two scenarios side by side: another site, or the same site on another date."""
     try:
-        return compare_scenarios(site_a, date_a, site_b, date_b or date_a, min_duration_days)
+        return compare_scenarios(site_a, date_a, site_b, date_b or date_a, min_duration_days, terrain_provider=prepare_site)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/horizons-validate")
@@ -72,9 +80,12 @@ def horizons_validate(site_id: str = Query(default="A"), date: str | None = Quer
     if key not in db["sites"]:
         raise HTTPException(status_code=404, detail=f"Unknown site_id '{site_id}'")
     site = db["sites"][key]
-    c = site["coordinates"]
     dt = parse_iso_utc(date)
-    local = evaluate_site_details(key, date)
+    try:
+        local = evaluate_site_details(key, date, terrain_provider=prepare_site)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    c = local["coordinates"]
     return {
         "site_id": key,
         "site_name": site["name"],

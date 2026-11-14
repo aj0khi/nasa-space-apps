@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import json
 import math
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from ephemeris import (
     compute_sun_and_earth_angles,
@@ -28,6 +28,11 @@ from preprocess_terrain import generate_terrain_data
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "sites_terrain.json"
 _TERRAIN_CACHE: Dict[str, Any] | None = None
+TerrainProvider = Callable[[Dict[str, Any]], Dict[str, Any]]
+
+
+def prepare_site(site: Dict[str, Any], provider: TerrainProvider | None) -> Dict[str, Any]:
+    return provider(site) if provider else {**site, "terrain_source": "synthetic"}
 
 
 def get_terrain_db() -> Dict[str, Any]:
@@ -53,7 +58,8 @@ def check_instant_visibility(site: Dict[str, Any], dt: datetime) -> Dict[str, An
     """
     coords = site["coordinates"]
     ephem = compute_sun_and_earth_angles(
-        coords["lat"], coords["lon"], dt, elevation_m=float(coords.get("elevation_m", 0.0))
+        coords["lat"], coords["lon"], dt,
+        elevation_m=0.0 if site.get("terrain_source") == "LOLA" else float(coords.get("elevation_m", 0.0)),
     )
     horizon_360 = site["horizon_angles_deg"]
 
@@ -179,6 +185,8 @@ def generate_cross_section_aa(
     Generates the 2D conceptual Terrain Cross-Section (`A — A'`) from the user's sketch!
     Slices from -8 km (Point A', opposite Sun) through 0 km (Landing Site Pad) to +8 km (Point A, toward Sun).
     """
+    if "_section" in site:
+        return site["_section"](sun_az_deg, sun_alt_deg, sun_horizon_deg)
     distances_km = [round(-8.0 + i * 0.4, 2) for i in range(41)]
     base_elev_m = float(site["coordinates"]["elevation_m"])
 
@@ -287,16 +295,17 @@ def evaluate_site_Status_and_notes(
             f"Earth Blocked by Terrain ({vis['earth_margin_deg']:.1f}°): Lunar relay satellite required for comms"
         )
 
-    resources.append(
-        f"Volatiles Access: {ice_km} km from {site['psr_name']} (Water Ice PSR)"
-    )
+    cautions.append(f"Unverified: {ice_km} km to {site['psr_name']}; ice access is not established.")
 
     if slope >= 10.0:
         cautions.append(f"Excessive Landing Slope: {slope}° exceeds 10° lander tip-over limit")
     elif slope >= 6.0:
         cautions.append(f"Moderate Terrain Slope: {slope}° requires precision hazard avoidance")
     else:
-        resources.append(f"Stable Landing Pad Topography: {slope}° slope (Roughness {site['roughness_m']}m)")
+        resources.append(f"Estimated terrain slope: {slope}°; local landing hazards are not assessed.")
+
+    if not resources:
+        resources.append("No verified resources identified.")
 
     if not is_sunlit or slope >= 10.0 or rem_days < min_duration_days:
         status = "NO_GO"
@@ -332,7 +341,8 @@ def evaluate_site_Status_and_notes(
 
 
 def evaluate_all_sites(
-    date_str: str | None = None, min_duration_days: float = 3.0
+    date_str: str | None = None, min_duration_days: float = 3.0,
+    terrain_provider: TerrainProvider | None = None,
 ) -> Dict[str, Any]:
     """
     Evaluates all 8 candidate sites (A-H) for the given timestamp.
@@ -347,7 +357,7 @@ def evaluate_all_sites(
 
     results: List[Dict[str, Any]] = []
     for site_id in sorted(sites_dict.keys()):
-        site = sites_dict[site_id]
+        site = prepare_site(sites_dict[site_id], terrain_provider)
         vis = check_instant_visibility(site, dt)
         window = compute_viable_window(site, dt, scan_days=15, step_hours=6)
         decision = evaluate_site_Status_and_notes(site, vis, window, min_duration_days)
@@ -361,6 +371,8 @@ def evaluate_all_sites(
                 "coordinates": site["coordinates"],
                 "map_xy": site["map_xy"],
                 "slope_deg": site["slope_deg"],
+                "terrain_source": site["terrain_source"],
+                "horizon_limit_km": site.get("horizon_limit_km"),
                 "status": decision["status"],
                 "is_go": decision["is_go"],
                 "badge": decision["badge"],
@@ -404,7 +416,8 @@ def evaluate_all_sites(
 
 
 def evaluate_site_details(
-    site_id: str, date_str: str | None = None, min_duration_days: float = 3.0
+    site_id: str, date_str: str | None = None, min_duration_days: float = 3.0,
+    terrain_provider: TerrainProvider | None = None,
 ) -> Dict[str, Any]:
     """
     Returns full inspection data for a single site (A-H), including:
@@ -420,7 +433,7 @@ def evaluate_site_details(
     if key not in db["sites"]:
         raise KeyError(f"Unknown site_id '{site_id}'. Valid IDs are A through H.")
 
-    site = db["sites"][key]
+    site = prepare_site(db["sites"][key], terrain_provider)
     vis = check_instant_visibility(site, dt)
     window = compute_viable_window(site, dt, scan_days=15, step_hours=6)
     decision = evaluate_site_Status_and_notes(site, vis, window, min_duration_days)
@@ -439,6 +452,8 @@ def evaluate_site_details(
         "query_timestamp_utc": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "coordinates": site["coordinates"],
         "slope_deg": site["slope_deg"],
+        "terrain_source": site["terrain_source"],
+        "horizon_limit_km": site.get("horizon_limit_km"),
         "roughness_m": site["roughness_m"],
         "ice_distance_km": site["ice_distance_km"],
         "psr_name": site["psr_name"],
@@ -470,14 +485,15 @@ def compare_scenarios(
     site_b: str,
     date_b: str | None,
     min_duration_days: float = 3.0,
+    terrain_provider: TerrainProvider | None = None,
 ) -> Dict[str, Any]:
     """
     Compares two landing scenarios side-by-side:
     - Question 1: "What about another site nearby?" (Site A vs Site C on same date)
     - Question 2: "What about this site on a different date?" (Site A on Date 1 vs Date 2)
     """
-    scen_a = evaluate_site_details(site_a, date_a, min_duration_days)
-    scen_b = evaluate_site_details(site_b, date_b, min_duration_days)
+    scen_a = evaluate_site_details(site_a, date_a, min_duration_days, terrain_provider)
+    scen_b = evaluate_site_details(site_b, date_b, min_duration_days, terrain_provider)
 
     winner = "A" if scen_a["suitability_score"] >= scen_b["suitability_score"] else "B"
     best = scen_a if winner == "A" else scen_b

@@ -94,7 +94,7 @@ function ScenarioCard({ n, d, best }: { n: number; d: SiteDetails; best: boolean
           <tr><td>Window dates</td><td className="small">{fmtUtc(parseEngineUtc(w.window_start_utc))} → {fmtUtc(parseEngineUtc(w.window_end_utc))}</td></tr>
           <tr><td>Sunlit / Earth (30 d)</td><td>{w.sunlit_pct_30d}% / {w.dte_comm_pct_30d}%</td></tr>
           <tr><td>Slope</td><td>{d.slope_deg}°</td></tr>
-          <tr><td>Water ice</td><td>{d.ice_distance_km} km · {d.psr_name}</td></tr>
+          <tr><td>Ice proximity</td><td>{d.ice_distance_km} km · {d.psr_name} (unverified)</td></tr>
         </tbody>
       </table>
       <ul className="plain cautions" style={{ marginTop: 8 }}>

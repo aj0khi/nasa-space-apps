@@ -11,7 +11,7 @@ router = APIRouter(tags=["illumination"])
 
 @router.get("/illumination/polar", response_model=Illumination)
 def polar(time: datetime | None = None, min_lat: float = Query(-80, ge=-89, le=-65), res: int = Query(384, ge=64, le=640)):
-    """Shaded-relief image of the south pole lit by the real Sun at `time` (rounded to the hour)."""
+    """Approximate shaded relief using the DEM and Sun at `time` (rounded to the hour)."""
     return illumination.polar_illumination(time or datetime.now(timezone.utc), min_lat, res)
 
 

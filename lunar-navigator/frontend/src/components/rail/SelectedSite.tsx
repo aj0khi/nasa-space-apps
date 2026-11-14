@@ -121,8 +121,9 @@ function EngineSiteCard({ d, id, fallbackName, loading }: { d: SiteDetails | nul
           <ul className="plain">
             {d.resources.map((r) => <li key={r}>{r}</li>)}
             <li className="muted small">{expert
-              ? `Slope ${d.slope_deg}° · roughness ${d.roughness_m} m · ${d.ice_distance_km} km to ${d.psr_name}`
-              : `Ground is ${d.slope_deg < 5 ? "fairly flat" : d.slope_deg <= 10 ? "a bit sloped" : "steep"} · ice may be ${d.ice_distance_km} km away in ${d.psr_name}`}</li>
+              ? `Slope ${d.slope_deg}° · ${d.terrain_source === "LOLA" ? `LOLA skyline to ${d.horizon_limit_km} km` : "synthetic terrain"}`
+              : `Ground is ${d.slope_deg < 5 ? "fairly flat" : d.slope_deg <= 10 ? "a bit sloped" : "steep"} at the modeled scale.`}</li>
+            <li className="muted small">Roughness and ice proximity are unverified assumptions, not LOLA measurements.</li>
           </ul>
         </dd>
 

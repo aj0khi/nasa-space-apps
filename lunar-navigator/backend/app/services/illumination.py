@@ -112,5 +112,5 @@ def _polar_illumination(hour_iso: str, min_lat: float, res: int) -> dict:
         "lit_fraction": float(lit[inside].mean()),
         "sun": {"subsolar_lat": sub_lat, "subsolar_lon": sub_lon, "elevation_at_pole": -sub_lat},
         "earth": {"sub_lat": e_lat, "sub_lon": e_lon, "elevation_at_pole": -e_lat},
-        "synthetic": True,
+        "synthetic": not (polar_dem.real_dem_available() and min_lat <= polar_dem.DEM_LAT),
     }

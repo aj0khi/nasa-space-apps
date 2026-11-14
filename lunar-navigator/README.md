@@ -56,6 +56,9 @@ npm run dev                                   # http://localhost:5173 (proxies /
 
 The first ephemeris call downloads about 20 MB of JPL kernels into `backend/data/kernels/`.
 
+**Real terrain (recommended, once per machine):** `cd backend && .venv/bin/python scripts/get_lola_dem.py` downloads NASA's
+LOLA south-pole elevation map (115.5 MB). Without it the app runs on a synthetic terrain model.
+
 ## Docs
 
 | File | What's in it |

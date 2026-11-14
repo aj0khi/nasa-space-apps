@@ -3,19 +3,15 @@
 Grid convention (all endpoints): row 0 = north edge, col 0 = west edge, site at the center.
 Azimuth is clockwise from north (east = +col, north = -row).
 
-Until a real LOLA DEM is in backend/data/dem/, a synthetic crater is generated so the frontend is never blocked.
+South of 70°S every tile is sampled from polar_dem (real NASA LOLA data south of 80°S once downloaded,
+the synthetic model otherwise), so tiles line up with the 2D map. Elsewhere a stand-in crater is used.
 """
 from __future__ import annotations
-
-from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
 from app.services import polar_dem
-
-DEM_DIR = Path(__file__).resolve().parents[2] / "data" / "dem"
-
 
 # ---------------------------------------------------------------- elevation
 def pixel_size_m(size_km: float, res: int) -> float:
@@ -37,16 +33,7 @@ def _synthetic_crater(size_km: float, res: int) -> np.ndarray:
 
 
 def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) -> tuple[np.ndarray, bool]:
-    """Return (elevation grid in metres, is_synthetic).
-
-    TODO(TERRAIN):
-      1. Put a LOLA polar-stereographic GeoTIFF in data/dem/ (see data/README.md).
-      2. Project (lat, lon) → DEM x/y with pyproj (Moon 2015 south polar stereographic, R = 1737.4 km).
-      3. Window-read size_km × size_km around it with rasterio and resample to res × res.
-    """
-    dems = sorted(DEM_DIR.glob("*.tif")) if DEM_DIR.exists() else []
-    if dems:
-        pass  # real DEM goes here
+    """Return (elevation grid in metres, is_synthetic) for a size_km × size_km tile centred on the site."""
     if polar_dem.covered(lat):
         # sample the regional south-pole model so this tile matches the 2D map exactly
         half_m = size_km * 500.0
@@ -57,7 +44,7 @@ def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) 
         north = -south
         x = x0 + (north * nx + east * ex) / 1000
         y = y0 + (north * ny + east * ey) / 1000
-        return polar_dem.elevation_m(x, y), True
+        return polar_dem.elevation_m(x, y, res_km=pixel_size_m(size_km, res) / 1000), not polar_dem.is_real(lat)
     return _synthetic_crater(size_km, res), True
 
 
@@ -115,14 +102,26 @@ def horizon_profile(grid: np.ndarray, pixel_m: float, n_az: int = 72) -> tuple[n
 
 
 # ---------------------------------------------------------------- rims
-def rim_mask(grid: np.ndarray, percentile: float = 92) -> np.ndarray:
-    """Rims = strongly convex ridges. Negative Laplacian of a smoothed DEM above a percentile.
+# Ridge curvature (1/m) that counts as a rim. Crater rims are ~5e-4 1/m; the gentle rolling plains between
+# craters are < 3e-5, so this keeps real ridges and drops the plains.
+RIM_CURVATURE = 1.2e-4
 
-    TODO(GEO+TERRAIN): validate against known rims (Shackleton, de Gerlache) and tune.
+
+def rim_mask(grid: np.ndarray, pixel_m: float, min_curvature: float = RIM_CURVATURE) -> np.ndarray:
+    """Rims = sharp convex ridges that stand above their surroundings.
+
+    Uses an absolute curvature threshold (not "the top x% of every tile"), so a flat tile has no rims,
+    and ignores a thin border where the filters can't see both sides of a ridge.
+    TODO(GEO+TERRAIN): validate against known rims (Shackleton, de Gerlache) once LOLA data is loaded.
     """
-    smooth = ndimage.gaussian_filter(grid, sigma=max(1, grid.shape[0] / 64))
-    convex = -ndimage.laplace(smooth)
-    return (convex > np.percentile(convex, percentile)).astype(np.uint8)
+    sigma = max(1.0, grid.shape[0] / 64)
+    smooth = ndimage.gaussian_filter(grid, sigma=sigma, mode="nearest")
+    curvature = -ndimage.laplace(smooth, mode="nearest") / pixel_m ** 2
+    local_mean = ndimage.uniform_filter(smooth, size=max(5, grid.shape[0] // 12), mode="nearest")
+    mask = (curvature > min_curvature) & (smooth > local_mean)
+    b = int(np.ceil(2 * sigma))
+    mask[:b, :] = mask[-b:, :] = mask[:, :b] = mask[:, -b:] = False
+    return mask.astype(np.uint8)
 
 
 def center_slope_deg(grid: np.ndarray, pixel_m: float) -> float:

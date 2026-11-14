@@ -1,11 +1,16 @@
 # Data folder (owner: TERRAIN + GEO)
 
-- `kernels/` – JPL ephemeris files. These download automatically on the first API call. Don't commit them.
-- `dem/` – put LOLA GeoTIFFs here. Don't commit them (too big). Share them over Drive instead.
+- `kernels/`: JPL ephemeris files. Download automatically on the first API call. Git-ignored.
+- `dem/`: NASA LOLA south-pole elevation map. Git-ignored, so **each teammate downloads it once**:
 
-## Getting a south-pole DEM
-1. Go to NASA PGDA → "LOLA south pole DEMs" (pgda.gsfc.nasa.gov/products/90). Download the **20 m/px** product (it's manageable in size) for the region 85°S–90°S.
-2. Or use NASA Moon Trek (trek.nasa.gov/moon). Layer: "LRO LOLA DEM South Pole". Use the export/download tool to grab a crop around your site.
-3. Save it as `dem/south_pole_20m.tif`, then implement the TODO in `app/services/terrain.py::load_elevation`.
+```bash
+cd lunar-navigator/backend && .venv/bin/python scripts/get_lola_dem.py
+```
 
-Without a DEM, the API returns a synthetic crater (`"synthetic": true`).
+That fetches `LDEM_80S_80M.IMG` (115.5 MB) from NASA's Planetary Data System:
+LRO / LOLA gridded data, 80 m per pixel, 80°S to the pole, polar stereographic (the same projection
+as our map), heights = value × 0.5 m above the 1737.4 km reference sphere. `app/services/polar_dem.py`
+reads it directly. Map shadows, site horizons, windows, scores, cross sections and 3D all use it.
+
+Without the file (or north of 80°S) the app uses the synthetic terrain model and says "synthetic terrain".
+Tests pin the synthetic model so they pass either way; `tests/test_real_dem.py` runs when the file is present.

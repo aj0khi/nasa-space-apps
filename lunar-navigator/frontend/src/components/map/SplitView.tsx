@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useApi } from "../../hooks/useApi";
 import { useApp } from "../../state/store";
-import { drawGrid } from "./gridCanvas";
+import { drawGrid, isEmptyMask } from "./gridCanvas";
 
 export default function SplitView() {
   const time = useApp((s) => s.time);
@@ -59,7 +59,7 @@ export default function SplitView() {
       <h3>Craters vs rims</h3>
       <div style={{ display: "flex", gap: 8 }}>
         {half(left, "Light & shadow")}
-        {half(right, "Rims")}
+        {half(right, isEmptyMask(rims.data?.mask) ? "Rims: none within 10 km" : "Rims")}
       </div>
       <div className="muted small" aria-live="polite">
         {cross

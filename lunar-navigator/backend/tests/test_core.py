@@ -70,3 +70,13 @@ def test_cross_section_shape():
     grid, _ = terrain.load_elevation(0, 0, 20, 64)
     d, e = terrain.cross_section(grid, terrain.pixel_size_m(20, 64), 0, 5)
     assert len(d) == len(e) == 200 and np.isfinite(e).all()
+
+
+def test_rims_only_where_there_are_ridges():
+    px = terrain.pixel_size_m(20, 128)
+    flat, _ = terrain.load_elevation(-82.01, 70.98, 20, 128)      # open plain between craters
+    assert terrain.rim_mask(flat, px).sum() == 0
+    crater, _ = terrain.load_elevation(-89.67, 129.78, 20, 128)   # Shackleton: rim ring inside the tile
+    m = terrain.rim_mask(crater, px)
+    assert m.sum() > 300
+    assert m[:3, :].sum() == m[-3:, :].sum() == m[:, :3].sum() == m[:, -3:].sum() == 0  # no tile-edge artefacts

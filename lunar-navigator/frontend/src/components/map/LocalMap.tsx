@@ -7,7 +7,7 @@ import { destination, fmtLat, fmtLon } from "../../lib/geo";
 import { go } from "../../router";
 import { MapTab, useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
-import { drawGrid } from "./gridCanvas";
+import { drawGrid, isEmptyMask } from "./gridCanvas";
 
 const SIZE_KM = 20; // must match the default tile size in api.elevation / api.shadow / api.rims
 const SCALE_KM = 5;
@@ -83,6 +83,9 @@ export default function LocalMap() {
       </div>
       {tab === "shadows" && shadow.data?.lit_fraction != null && (
         <div>Lit area: {(shadow.data.lit_fraction * 100).toFixed(0)}%</div>
+      )}
+      {tab === "rims" && isEmptyMask(rims.data?.mask) && (
+        <div className="muted small" style={{ marginTop: 6 }}>No crater rims within 10 km of this spot: it’s open, gently rolling ground.</div>
       )}
       <ExplainCard text={current.help} />
       <div className="muted small">

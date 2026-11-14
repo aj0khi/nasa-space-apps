@@ -4,26 +4,36 @@ Map convention (same as the frontend map, lib/geo.ts):
     x = r·sin(lon), y = −r·cos(lon), r = 2R·tan((90°+lat)/2)   [km]
     0° longitude (toward Earth) is up (−y), 90°E is right (+x). Rows run top→bottom (+y).
 
-Until a real LOLA 80°S mosaic is loaded, elevation is SYNTHETIC: every crater and massif in
-data/south_pole_features.json is turned into a landform using crater depth/rim scaling laws
-(Pike 1977), on top of gentle rolling terrain. It is a stand-in with realistic proportions,
-not a map of the real surface.
-
-TODO(TERRAIN): load the LOLA 80°S polar stereographic DEM (already this projection) and sample it
-in `elevation_m()` instead; everything downstream (shadows, horizons, scores) then becomes real.
+Elevation source, in order:
+  1. REAL: NASA LRO LOLA south-pole DEM, data/dem/ldem_80s_80m.img (80 m/px, 80°S → pole, same
+     projection as the map). Download it once with `python scripts/get_lola_dem.py`.
+  2. SYNTHETIC fallback (no DEM file, or north of 80°S): every crater and massif in
+     data/south_pole_features.json turned into a landform with crater depth/rim scaling laws
+     (Pike 1977) on gentle rolling terrain. Realistic proportions, not the real surface.
+Everything downstream (map shadows, horizons, windows, scores, cross sections, 3D) uses elevation_m().
 """
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 
 R_MOON_KM = 1737.4
 FEATURES_FILE = Path(__file__).resolve().parents[1] / "data" / "south_pole_features.json"
 COVERAGE_LAT = -70.0  # the model covers everything south of this latitude
 D = np.pi / 180
+
+# NASA PDS LOLA GDR polar product (see data/dem/ldem_80s_80m.lbl)
+DEM_FILE = Path(__file__).resolve().parents[2] / "data" / "dem" / "ldem_80s_80m.img"
+DEM_N = 7600            # LINES = LINE_SAMPLES
+DEM_SCALE_M = 80.0      # MAP_SCALE
+DEM_DN_TO_M = 0.5       # SCALING_FACTOR: height above the 1737.4 km sphere = DN × 0.5 m
+DEM_LAT = -80.0         # coverage: everything south of this
+_force_synthetic = os.environ.get("LUNAR_SYNTHETIC_TERRAIN") == "1"
 
 
 # ---------------------------------------------------------------- projection
@@ -83,7 +93,7 @@ def _landforms():
     return craters, massifs, waves
 
 
-def elevation_m(x, y) -> np.ndarray:
+def _synthetic_elevation_m(x, y) -> np.ndarray:
     """Synthetic elevation (metres) at map coordinates x, y (km). Vectorised."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -109,12 +119,80 @@ def elevation_m(x, y) -> np.ndarray:
     return z * 1000.0
 
 
+# ---------------------------------------------------------------- real LOLA data
+def set_force_synthetic(flag: bool) -> None:
+    """Tests use the synthetic model so results don't depend on whether the DEM was downloaded."""
+    global _force_synthetic
+    _force_synthetic = flag
+    _lola.cache_clear()
+    grid.cache_clear()
+    horizon_profile.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _lola() -> list[tuple[float, np.ndarray]] | None:
+    """[(metres per pixel, DN array)] from fine to coarse, or None if the DEM isn't available.
+
+    The 80 m grid is memory-mapped (read from disk on demand). 4× and 16× block means are built once
+    so zoomed-out views sample a smoothed surface instead of every 20th pixel.
+    """
+    if _force_synthetic or not DEM_FILE.exists() or DEM_FILE.stat().st_size != DEM_N * DEM_N * 2:
+        return None
+    base = np.memmap(DEM_FILE, dtype="<i2", mode="r", shape=(DEM_N, DEM_N))
+    k, n4 = 4, DEM_N // 4
+    l4 = np.empty((n4, n4), dtype=np.float32)
+    step = 400  # rows per chunk, keeps memory small
+    for i in range(0, DEM_N, step):
+        l4[i // k:(i + step) // k] = base[i:i + step].astype(np.float32).reshape(step // k, k, n4, k).mean(axis=(1, 3))
+    l16 = l4.reshape(n4 // 4, 4, n4 // 4, 4).mean(axis=(1, 3))
+    return [(DEM_SCALE_M, base), (DEM_SCALE_M * 4, l4), (DEM_SCALE_M * 16, l16)]
+
+
+def real_dem_available() -> bool:
+    return _lola() is not None
+
+
+def is_real(lat: float) -> bool:
+    """True when terrain at this latitude comes from NASA's LOLA data rather than the model."""
+    return real_dem_available() and lat <= DEM_LAT
+
+
+def elevation_m(x, y, res_km: float | None = None) -> np.ndarray:
+    """Elevation (metres, relative to the 1737.4 km sphere) at map coordinates x, y (km). Vectorised.
+
+    `res_km` = spacing the caller samples at; picks the matching LOLA level (avoids aliasing).
+    Real LOLA data inside its coverage, synthetic model outside it.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    levels = _lola()
+    if levels is None:
+        return _synthetic_elevation_m(x, y)
+    if x.ndim == 0 or y.ndim == 0:  # single point
+        x, y = np.broadcast_arrays(x, y)
+        return elevation_m(x.reshape(1), y.reshape(1), res_km).reshape(())
+    want_m = max((res_km or 0) * 1000, DEM_SCALE_M)
+    scale_m, arr = [lv for lv in levels if lv[0] <= want_m][-1]
+    n = arr.shape[0]
+    centre = (n - 1) / 2
+    # Same orientation as our map: 0° longitude up (row decreases), 90°E right (column increases).
+    col = centre + x * 1000 / scale_m
+    row = centre + y * 1000 / scale_m
+    inside = (col >= 0) & (col <= n - 1) & (row >= 0) & (row <= n - 1)
+    if inside.all():
+        return ndimage.map_coordinates(arr, [row, col], order=1, mode="nearest").astype(float) * DEM_DN_TO_M
+    z = _synthetic_elevation_m(x, y)
+    if inside.any():
+        z[inside] = ndimage.map_coordinates(arr, [row[inside], col[inside]], order=1, mode="nearest") * DEM_DN_TO_M
+    return z
+
+
 @lru_cache(maxsize=16)
 def grid(half_km: float, res: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(x, y, z_m) on a res×res grid spanning [−half, half] km. Row 0 = top (−y)."""
     v = np.linspace(-half_km, half_km, res)
     x, y = np.meshgrid(v, v)
-    return x, y, elevation_m(x, y)
+    return x, y, elevation_m(x, y, res_km=2 * half_km / (res - 1))
 
 
 # ---------------------------------------------------------------- horizons

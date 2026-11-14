@@ -1,6 +1,7 @@
 // 2D tab: the south pole map, lit by the Sun at the time on the date slider. Owner: MAP.
 import { useState } from "react";
 import SouthPoleMap from "../components/map/SouthPoleMap";
+import TopoView from "../components/map/TopoView";
 import ExplainCard from "../components/learn/ExplainCard";
 import { api } from "../api/client";
 import { explain } from "../content/explanations";
@@ -24,11 +25,20 @@ export default function MapView({ onCursor }: Props) {
   const { selectedId, custom, mode, time } = useApp();
   const sites = useApp((s) => s.sites());
   const [minLat, setMinLat] = useState(-80);
+  const [look, setLook] = useState<"lit" | "topo">("lit");
 
   const features = useApi(() => api.features(), [], 0);
   const hour = hourKey(time);
-  const illum = useLatest(() => api.illumination(hour, minLat), `${hour}|${minLat}`);
+  const illum = useLatest(() => (look === "lit" ? api.illumination(hour, minLat) : null), `${hour}|${minLat}|${look}`);
   const a = illum.data && illum.data.min_lat === minLat ? illum.data : null;
+
+  const lookSwitch = (
+    <div className="tabs" role="group" aria-label="Map type">
+      <button className={look === "lit" ? "active" : ""} onClick={() => setLook("lit")}>Lit map</button>
+      <button className={look === "topo" ? "active" : ""} onClick={() => setLook("topo")}>Topographic</button>
+    </div>
+  );
+  if (look === "topo") return <TopoView modeSwitch={lookSwitch} />;
 
   return (
     <div className="mapview">
@@ -37,6 +47,7 @@ export default function MapView({ onCursor }: Props) {
         onSelect={(id) => go.site(id)} onPick={go.point} onCursor={onCursor} />
 
       <div className="map-overlay top-left">
+        {lookSwitch}
         <div className="tabs" role="group" aria-label="Map extent">
           {EXTENTS.map((e) => (
             <button key={e.minLat} className={minLat === e.minLat ? "active" : ""} onClick={() => setMinLat(e.minLat)}>{e.label}</button>
@@ -47,13 +58,20 @@ export default function MapView({ onCursor }: Props) {
 
       <div className="map-overlay top-mid sunbox" aria-live="polite">
         <span className="sundot" />
-        {a ? (
+        {a ? (mode === "expert" ? (
           <span>
             Sun over <b>{fmtLon(a.sun.subsolar_lon)}</b> ·{" "}
             <b>{a.sun.elevation_at_pole >= 0 ? "+" : ""}{a.sun.elevation_at_pole.toFixed(1)}°</b> at the pole ·{" "}
+            sub-solar lat <b>{a.sun.subsolar_lat.toFixed(2)}°</b> ·{" "}
             <b>{Math.round(a.lit_fraction * 100)}%</b> of this map lit
           </span>
-        ) : <span className="muted">Lighting the terrain…</span>}
+        ) : (
+          <span>
+            {a.sun.elevation_at_pole > 0 ? "The Sun skims the horizon" : "The Sun is just below the horizon at the pole"}
+            {" "}on the side marked “Sun”. Shadows stretch away from it ·{" "}
+            <b>{Math.round(a.lit_fraction * 100)}%</b> of the map is in sunlight
+          </span>
+        )) : <span className="muted">Lighting the terrain…</span>}
         {illum.loading && a && <span className="spinner" aria-label="updating" />}
       </div>
 

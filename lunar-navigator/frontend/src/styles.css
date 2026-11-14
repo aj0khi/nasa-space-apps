@@ -197,3 +197,39 @@ input[type="range"]:disabled { opacity: 0.45; }
 .cmp-card { flex: 1; min-width: 300px; }
 .cmp-card.best { border-color: var(--green); }
 .viewtabs button { white-space: nowrap; }
+
+/* ---- Visualization refinements: mission setup, landing conditions, beginner summary, viewpoints ---- */
+.ms-grid { display: grid; gap: 8px; }
+.ms-grid label, .ms-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.ms-grid select, .ms-grid input, .ms-row input { width: 100%; padding: 6px 8px; border: 1.5px solid var(--line-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 14px; }
+.ms-row { display: flex; gap: 8px; align-items: flex-end; margin-top: 10px; }
+.ms-row label { flex: 1; min-width: 0; }
+.ms-override { margin-top: 4px; }
+.presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.presets button { padding: 3px 8px; font-size: 12px; }
+.presets button.active { background: var(--line); border-color: var(--sun); }
+.cond-list { margin-top: 8px; display: grid; gap: 8px; }
+.cond { display: grid; gap: 2px; font-size: 14px; line-height: 1.4; }
+.cond-label { font-weight: 700; }
+.cond.ok .cond-label { color: var(--green); }
+.cond.caution .cond-label { color: var(--yellow); }
+.cond.hazard .cond-label { color: var(--red); }
+.plain-summary { margin: 0 0 6px; font-size: 14px; line-height: 1.45; }
+.viewpoints { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.override-note { margin-bottom: 8px; padding: 6px 10px; border-left: 3px solid var(--yellow); background: var(--panel-2); border-radius: 6px; font-size: 13px; }
+
+/* ---- Topographic view (2D tab) ---- */
+.topo-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.topo-head h3 { margin: 0; }
+.topo-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 10px 0; }
+.topo-slider { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 260px; }
+.topo-svg { display: block; max-width: 900px; margin: 0 auto; border-radius: 8px; }
+.topo-readout { text-align: center; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.topo.paper .topo-prof-bg { fill: #efe6d2; }
+.topo.paper .topo-prof-ground { fill: #d9cba9; }
+.topo.glow .topo-prof-bg { fill: #0d1412; }
+.topo.glow .topo-prof-ground { fill: #163a22; }
+.topo .topo-muted { fill: #8a8470; }
+.topo.glow .topo-muted { fill: #7fa38a; }
+.topo-label { paint-order: stroke; stroke: rgba(10, 12, 16, 0.6); stroke-width: 3px; }
+.topo.paper .topo-label { stroke: rgba(239, 230, 210, 0.85); }

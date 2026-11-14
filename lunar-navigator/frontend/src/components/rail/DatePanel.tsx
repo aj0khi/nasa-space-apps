@@ -1,6 +1,9 @@
 // DATE: three boxes (day / month / year) and a slider through one lunar day. Owner: LEAD.
 import { useEffect, useState } from "react";
+import { api } from "../../api/client";
+import { useApi } from "../../hooks/useApi";
 import { useApp } from "../../state/store";
+import { ExpertOnly } from "../learn/ModeGate";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const LUNAR_DAY_H = 29.53 * 24;
@@ -58,6 +61,43 @@ export default function DatePanel() {
         <span>{time.toUTCString().slice(5, 22)} UTC</span>
       </div>
       <button className="link" onClick={() => setBaseTime(new Date())}>Reset to now</button>
+      <DatePresets />
+      <ExpertOnly>
+        <div className="ms-row">
+          <label><span>Time (UTC)</span>
+            <input type="time" value={time.toISOString().slice(11, 16)} onChange={(e) => {
+              const [h, m] = e.target.value.split(":").map(Number);
+              if (!Number.isFinite(h) || !Number.isFinite(m)) return;
+              const d = new Date(time); d.setUTCHours(h, m, 0, 0); setTime(d);
+            }} />
+          </label>
+          <label><span>Hours into lunar day</span>
+            <input type="number" min={0} max={Math.round(LUNAR_DAY_H)} step={1} value={Math.round(offsetH)}
+              onChange={(e) => { const h = Number(e.target.value); if (Number.isFinite(h)) setTime(new Date(baseTime.getTime() + Math.max(0, Math.min(LUNAR_DAY_H, h)) * 3.6e6)); }} />
+          </label>
+        </div>
+      </ExpertOnly>
     </section>
+  );
+}
+
+/** One-click dates: today, a week out, and the Moon's next seasons (when the Sun is highest / lowest at the pole). */
+function DatePresets() {
+  const { baseTime, setBaseTime } = useApp();
+  const seasons = useApi(() => api.seasons(new Date().toISOString()), [], 0);
+  const now = Date.now();
+  const presets = [
+    { key: "now", label: "Today", t: new Date(now) },
+    { key: "week", label: "+1 week", t: new Date(now + 7 * 864e5) },
+    { key: "month", label: "+1 month", t: new Date(now + 29.53 * 864e5) },
+    ...(seasons.data ?? []).map((s) => ({ key: s.key, label: s.name, t: new Date(s.time) })),
+  ];
+  return (
+    <div className="presets" role="group" aria-label="Date presets">
+      {presets.map((p) => (
+        <button key={p.key} className={Math.abs(p.t.getTime() - baseTime.getTime()) < 3.6e6 ? "active" : ""}
+          title={p.t.toUTCString()} onClick={() => setBaseTime(p.t)}>{p.label}</button>
+      ))}
+    </div>
   );
 }

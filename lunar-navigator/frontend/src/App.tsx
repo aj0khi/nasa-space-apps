@@ -13,6 +13,8 @@ import DatePanel from "./components/rail/DatePanel";
 import LandingList from "./components/rail/LandingList";
 import SelectedSite from "./components/rail/SelectedSite";
 import CoordsBar from "./components/rail/CoordsBar";
+import MissionSetup from "./components/rail/MissionSetup";
+import Conditions from "./components/rail/Conditions";
 import { sixHourKey, useLatest } from "./hooks/useLatest";
 import { go, useRoute, View } from "./router";
 import { useApp } from "./state/store";
@@ -85,8 +87,10 @@ export default function App() {
       </main>
       <aside className="rail">
         <DatePanel />
+        <MissionSetup />
         <LandingList loading={evaluation.loading} error={evaluation.error} onSelect={(id) => go.site(id)} />
         <SelectedSite loading={details.loading} />
+        <Conditions />
         <CoordsBar cursor={cursor} />
       </aside>
     </div>

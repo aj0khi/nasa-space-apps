@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A prototype for exploring Earth landscapes as analogs for Moon and Mars missions."
+    >
+    <title>TerraTwin | Earth Analog Explorer</title>
+    <link rel="stylesheet" href="src/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="TerraTwin home">
+        <span class="brand-mark" aria-hidden="true">T</span>
+        <span>TerraTwin</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#explorer">Explorer</a>
+        <a href="#method">Method</a>
+      </nav>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <p class="eyebrow">NASA Space Apps Challenge · Calgary</p>
+        <h1 id="hero-title">Earth landscapes.<br>Off-world preparation.</h1>
+        <p class="hero-copy">
+          Explore how Earth’s geology and environments could help teams prepare
+          for future missions to the Moon and Mars.
+        </p>
+        <a class="primary-link" href="#explorer">Explore the prototype</a>
+      </section>
+
+      <section class="workspace" id="explorer" aria-labelledby="explorer-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Prototype workspace</p>
+            <h2 id="explorer-title">Earth analog explorer</h2>
+          </div>
+          <span class="status"><span aria-hidden="true"></span> Data not connected</span>
+        </div>
+
+        <div class="explorer-grid">
+          <figure class="map-panel" aria-labelledby="map-caption">
+            <div class="map-placeholder" aria-hidden="true">
+              <span class="map-label map-label-one">Earth</span>
+              <span class="map-label map-label-two">Moon</span>
+              <span class="map-label map-label-three">Mars</span>
+              <span class="map-message">Map preview<br>coming soon</span>
+            </div>
+            <figcaption id="map-caption">
+              Map placeholder — no locations or scientific data are displayed yet.
+            </figcaption>
+          </figure>
+
+          <section class="candidate-panel" aria-labelledby="candidate-title">
+            <p class="eyebrow">Candidate sites</p>
+            <h3 id="candidate-title">Your comparison starts here</h3>
+            <p>
+              Once sourced datasets are connected, candidate landscapes and
+              their supporting evidence will appear in this panel.
+            </p>
+            <div class="empty-state">
+              <span class="empty-icon" aria-hidden="true">＋</span>
+              <p>No verified sites yet</p>
+              <span>Waiting for reviewed data</span>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="method-section" id="method" aria-labelledby="method-title">
+        <div class="method-intro">
+          <p class="eyebrow">A geology-led workflow</p>
+          <h2 id="method-title">Compare with evidence, not guesses.</h2>
+          <p>
+            The team will define criteria and document data sources before
+            making any claims about how well a place on Earth represents
+            another world.
+          </p>
+        </div>
+        <div class="criteria-grid">
+          <article class="criteria-card">
+            <span class="card-number">01</span>
+            <h3>Geology</h3>
+            <p>Describe the rock types, landforms, and processes being compared.</p>
+          </article>
+          <article class="criteria-card">
+            <span class="card-number">02</span>
+            <h3>Environment</h3>
+            <p>Track relevant surface and environmental conditions with sources.</p>
+          </article>
+          <article class="criteria-card">
+            <span class="card-number">03</span>
+            <h3>Data quality</h3>
+            <p>Show where each observation came from and what it cannot tell us.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>TerraTwin · Calgary Space Apps team prototype</span>
+      <span>Research data and map layers are not connected yet.</span>
+    </footer>
+  </body>
+</html>

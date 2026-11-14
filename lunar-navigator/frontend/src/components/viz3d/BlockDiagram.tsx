@@ -8,12 +8,16 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { api } from "../../api/client";
 import { hourKey, useLatest } from "../../hooks/useLatest";
+import { fmtLat, fmtLon } from "../../lib/geo";
 import { contours, levels, niceInterval } from "../../lib/topo";
 import { useApp } from "../../state/store";
 import { useExpert } from "../learn/ModeGate";
 import { engravingMaterial, flatBrightness } from "./engraving";
 
-const RES = 129;
+// Aim for 20 m per sample (the resolution of NASA's LOLA south-pole maps). The backend allows at most 512
+// samples across, so 10 km gets 20 m, 20 km ~39 m, 50 km ~98 m. Odd, so the site is exactly the centre sample.
+const TARGET_M = 20;
+const resFor = (sizeKm: number) => Math.min(511, Math.round((sizeKm * 1000) / TARGET_M) + 1) | 1;
 const THICK = 0.12; // block thickness below the lowest point, as a fraction of its width
 const SUN_I = 3, AMB_I = 0.35;
 const INK = "#2b2419", PAPER = "#efe7d4";
@@ -23,28 +27,33 @@ export default function BlockDiagram() {
   const time = useApp((s) => s.time);
   const override = useApp((s) => s.sunOverride);
   const expert = useExpert();
-  const [sizeKm, setSizeKm] = useState(20);
+  const [sizeKm, setSizeKm] = useState(10);
   const [resetKey, setResetKey] = useState(0);
   const key = loc ? `${loc.lat},${loc.lon}` : "";
-  const elev = useLatest(() => (loc ? api.elevation(loc, sizeKm, RES) : null), `${key}|${sizeKm}`);
+  const res = resFor(sizeKm);
+  const reqKey = `${key}|${sizeKm}`;
+  // tag each response with its request, so a new site never shows the previous site's block
+  const elev = useLatest(() => (loc ? api.elevation(loc, sizeKm, res).then((d) => ({ k: reqKey, d })) : null), reqKey);
+  const tile = elev.data?.k === reqKey ? elev.data.d : null;
   const hour = hourKey(time);
   const state = useLatest(() => (loc ? api.state(loc, hour) : null), `${key}|${hour}`);
   const sun = state.data ? { alt: override?.alt ?? state.data.sun.altitude, az: override?.az ?? state.data.sun.azimuth } : null;
+  const where = loc?.site ? `Site ${loc.site.id} · ${loc.site.name}` : loc ? `${fmtLat(loc.lat)}, ${fmtLon(loc.lon)}` : "";
 
   const info = useMemo(() => {
-    const g = elev.data?.grid;
+    const g = tile?.grid;
     if (!g) return null;
     let lo = Infinity, hi = -Infinity;
     for (const r of g) for (const v of r) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     const exag = Math.max(1, Math.min(8, (0.3 * sizeKm * 1000) / Math.max(1, hi - lo)));
     const step = niceInterval(hi - lo, 12);
     return { g, lo, hi, exag, step, lv: levels(lo, hi, step) };
-  }, [elev.data, sizeKm]);
+  }, [tile, sizeKm]);
 
   return (
     <div className="panel">
       <div className="topo-head">
-        <h3>Block diagram {elev.data?.synthetic && <small>(synthetic terrain)</small>} {elev.loading && <span className="spinner" aria-label="loading" />}</h3>
+        <h3>Block diagram · {where} {tile?.synthetic && <small>(synthetic terrain)</small>} {elev.loading && <span className="spinner" aria-label="loading" />}</h3>
         <div className="topo-controls" style={{ margin: 0 }}>
           <div className="tabs" role="group" aria-label="Area">
             {[10, 20, 50].map((k) => <button key={k} className={sizeKm === k ? "active" : ""} onClick={() => setSizeKm(k)}>{k} km</button>)}
@@ -53,17 +62,17 @@ export default function BlockDiagram() {
         </div>
       </div>
       <div className="block-stage">
-        {!info || !loc ? <div className="profile-loading">{elev.error ?? (loc ? "Cutting the block…" : "Pick a landing site first.")}</div> : (
+        {!info || !loc ? <div className="profile-loading">{elev.error ?? (loc ? `Cutting the block for ${where}…` : "Pick a landing site first.")}</div> : (
           <Canvas shadows camera={{ position: [sizeKm * 1.35, -sizeKm * 1.9, sizeKm * 1.15], up: [0, 0, 1], fov: 40 }}
             onCreated={({ scene }) => { scene.background = new THREE.Color(PAPER); }}>
-            <Block info={info} sizeKm={sizeKm} sun={sun} resetKey={resetKey} />
+            <Block info={info} sizeKm={sizeKm} sun={sun} resetKey={`${resetKey}|${reqKey}`} />
           </Canvas>
         )}
       </div>
       <div className="muted small">
         {expert && info
-          ? `Contours every ${info.step} m · ${Math.round(info.lo).toLocaleString()} to ${Math.round(info.hi).toLocaleString()} m · heights ×${info.exag.toFixed(1)} · Sun ${sun ? `${sun.alt.toFixed(1)}° from ${Math.round(sun.az)}°` : "…"}. `
-          : "The block is a slice of ground cut out around the site. Its sides show the layers of height; the map underneath is what you get by flattening those contour lines straight down. "}
+          ? `Contours every ${info.step} m · ${Math.round(info.lo).toLocaleString()} to ${Math.round(info.hi).toLocaleString()} m · ${Math.round((sizeKm * 1000) / (res - 1))} m per sample · heights ×${info.exag.toFixed(1)} · Sun ${sun ? `${sun.alt.toFixed(1)}° from ${Math.round(sun.az)}°` : "…"}. `
+          : `${sizeKm} km of ground cut out around the site, about ${Math.round((sizeKm * 1000) / (res - 1))} m between height samples. The numbers up the side are real heights; the map underneath is what you get by flattening the contour lines straight down. `}
         Drag to turn · scroll to zoom.
       </div>
     </div>
@@ -72,7 +81,24 @@ export default function BlockDiagram() {
 
 interface Info { g: number[][]; lo: number; hi: number; exag: number; step: number; lv: number[] }
 
-function Block({ info, sizeKm, sun, resetKey }: { info: Info; sizeKm: number; sun: { alt: number; az: number } | null; resetKey: number }) {
+/** A text label that always faces the camera (no font library needed). */
+function makeLabel(text: string, heightWorld: number) {
+  const c = document.createElement("canvas"), ctx = c.getContext("2d")!;
+  const fs = 44;
+  ctx.font = `${fs}px Georgia, serif`;
+  c.width = Math.ceil(ctx.measureText(text).width) + 12; c.height = fs + 12;
+  ctx.fillStyle = PAPER; ctx.globalAlpha = 0.9; ctx.fillRect(0, 0, c.width, c.height); ctx.globalAlpha = 1;
+  ctx.font = `${fs}px Georgia, serif`; ctx.fillStyle = INK; ctx.textBaseline = "middle";
+  ctx.fillText(text, 6, c.height / 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, toneMapped: false, depthTest: false }));
+  s.scale.set((heightWorld * c.width) / c.height, heightWorld, 1);
+  s.center.set(0, 0.5);
+  return s;
+}
+
+function Block({ info, sizeKm, sun, resetKey }: { info: Info; sizeKm: number; sun: { alt: number; az: number } | null; resetKey: string }) {
   const { camera, gl } = useThree();
   const { g, lo, exag, step, lv } = info;
   const m = g.length, half = sizeKm / 2, px = sizeKm / (m - 1);
@@ -149,6 +175,21 @@ function Block({ info, sizeKm, sun, resetKey }: { info: Info; sizeKm: number; su
     return line;
   }, [g, lv, sizeKm, exag]);
 
+  // real heights up the front-right (south-east) corner, like the numbers on a textbook block diagram
+  const labels = useMemo(() => {
+    const grp = new THREE.Group();
+    const labelH = sizeKm * 0.05;
+    const gap = (step / 1000) * exag; // vertical distance between two contour levels on the block
+    const every = Math.max(1, Math.ceil((labelH * 1.4) / gap)); // never let labels overlap
+    lv.forEach((l, k) => {
+      if (k % every) return;
+      const s = makeLabel(`${Math.round(l).toLocaleString()} m`, labelH);
+      s.position.set(half + sizeKm * 0.03, -half - sizeKm * 0.03, Z(l));
+      grp.add(s);
+    });
+    return grp;
+  }, [lv, step, sizeKm, exag, lo]);
+
   const engrTop = useMemo(() => engravingMaterial({ interval: (step / 1000) * exag, hatch: sizeKm / 160 }), [step, exag, sizeKm]);
   const engrSide = useMemo(() => {
     const e = engravingMaterial({ interval: (step / 1000) * exag, hatch: sizeKm / 60 });
@@ -192,6 +233,7 @@ function Block({ info, sizeKm, sun, resetKey }: { info: Info; sizeKm: number; su
         <meshBasicMaterial map={mapTex} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <primitive object={drops} />
+      <primitive object={labels} />
       {/* the site: a post standing on the block, and its spot on the map */}
       <mesh position={[0, 0, Z(g[(m - 1) / 2][(m - 1) / 2]) + sizeKm * 0.03]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[sizeKm * 0.004, sizeKm * 0.004, sizeKm * 0.06, 8]} />

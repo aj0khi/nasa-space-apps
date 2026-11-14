@@ -1,8 +1,9 @@
 // Ground detail finer than the elevation data: an ESTIMATE, not a measurement. Owner: Visualization.
 //
 // Real lunar terrain below the DEM's resolution is dominated by small impact craters (their sizes
-// follow a power law: many small, few large) plus gentle rolling of the regolith. We add both on top
-// of the measured heights. Everything is seeded by position, so the same spot always looks the same.
+// follow a power law: many small, few large) plus gentle rolling of the regolith. We add only what the
+// data cannot show: features smaller than its sample spacing. Everything is seeded by position, so the
+// same spot always looks the same.
 // Fresh simple craters: depth ≈ 0.2 × diameter, rim ≈ 0.04 × diameter (Pike 1977).
 
 const frac = (x: number) => x - Math.floor(x);
@@ -20,11 +21,11 @@ function valueNoise(x: number, y: number, salt: number) {
   return (a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sy - 0.5;
 }
 
-/** Gentle rolling: ~±4 m over hundreds of metres, fading to ~±0.3 m bumps at 20 m. */
-function rolling(e: number, n: number) {
+/** Gentle rolling: octaves from 400 m down to 25 m, keeping only those shorter than twice the data spacing. */
+function rolling(e: number, n: number, dataM: number) {
   let z = 0, amp = 6, wl = 400;
   for (let o = 0; o < 5; o++) {
-    z += amp * valueNoise(e / wl, n / wl, o);
+    if (wl < 2 * dataM) z += amp * valueNoise(e / wl, n / wl, o);
     amp *= 0.5;
     wl *= 0.5;
   }
@@ -33,7 +34,8 @@ function rolling(e: number, n: number) {
 
 // Crater layers: cell size (m), chance a cell holds a crater, diameter range (m).
 const LAYERS = [
-  { cell: 45, p: 0.7, dMin: 15, dMax: 50, salt: 11 }, // smallest ≈ 2 mesh cells across at 7.5 m spacing
+  { cell: 25, p: 0.6, dMin: 6, dMax: 20, salt: 5 },
+  { cell: 45, p: 0.7, dMin: 15, dMax: 50, salt: 11 },
   { cell: 260, p: 0.45, dMin: 45, dMax: 160, salt: 23 },
 ];
 
@@ -43,9 +45,10 @@ function craterHeight(r: number, D: number) {
   return r < 3 ? rim * r ** -3 : 0;
 }
 
-function craters(e: number, n: number) {
+function craters(e: number, n: number, dataM: number) {
   let z = 0;
   for (const L of LAYERS) {
+    if (L.dMin >= dataM) continue; // the data already shows craters this big
     const cx = Math.floor(e / L.cell), cy = Math.floor(n / L.cell);
     const reach = Math.ceil((1.5 * L.dMax) / L.cell);
     for (let j = -reach; j <= reach; j++) {
@@ -54,6 +57,7 @@ function craters(e: number, n: number) {
         if (hash(gx, gy, L.salt) > L.p) continue;
         // power-law size: many small, few large
         const D = L.dMin * (L.dMax / L.dMin) ** (hash(gx, gy, L.salt + 1) ** 2.2);
+        if (D >= dataM) continue;
         const px = (gx + hash(gx, gy, L.salt + 2)) * L.cell, py = (gy + hash(gx, gy, L.salt + 3)) * L.cell;
         const r = Math.hypot(e - px, n - py) / (D / 2);
         if (r < 3) z += craterHeight(r, D) * (0.5 + 0.5 * hash(gx, gy, L.salt + 4)); // older craters are shallower
@@ -63,8 +67,8 @@ function craters(e: number, n: number) {
   return z;
 }
 
-/** Estimated extra height (m) at east/north (m from the site). */
-export const detail = (e: number, n: number) => rolling(e, n) + craters(e, n);
+/** Estimated extra height (m) at east/north (m from the site), for data sampled every `dataM` metres. */
+export const detail = (e: number, n: number, dataM: number) => rolling(e, n, dataM) + craters(e, n, dataM);
 
 /** Bilinear height (m) from a backend tile: row 0 = north edge, col 0 = west edge, site at the centre. */
 export function sampleTile(grid: number[][], sizeM: number, e: number, n: number) {

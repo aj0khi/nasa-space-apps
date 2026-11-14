@@ -16,11 +16,15 @@ import { engravingMaterial, flatBrightness } from "./engraving";
 import { groundMaterial } from "./groundMaterial";
 
 const TILE_KM = 20;
-const TILE_RES = 256;
+const TILE_RES = 511; // ~39 m per sample (the backend allows at most 512 across)
+// Sharper data near the site: 10 km at 20 m per sample (the resolution of NASA's LOLA south-pole maps).
+const FINE_KM = 10, FINE_RES = 501, FINE_M = FINE_KM * 1000;
+const FINE_STEP = FINE_M / (FINE_RES - 1), TILE_STEP = (TILE_KM * 1000) / (TILE_RES - 1);
+const BLEND_M = 700; // fade from the 20 m data to the 39 m data over the last 700 m of the fine tile
 const TILE_M = TILE_KM * 1000;
-const PATCH_M = 2400; // detailed ground around the explorer
-const PATCH_SEG = 320; // 7.5 m spacing
-const RECENTER_M = 700;
+const PATCH_M = 1600; // detailed ground around the explorer
+const PATCH_SEG = 320; // 5 m spacing, so estimated craters down to ~10 m show
+const RECENTER_M = 450;
 const EYE_M = 1.8;
 const SKY_M = 60000; // distance at which Sun, Earth and stars are drawn
 // No air on the Moon: direct sunlight is harsh and shadows are nearly black (only faint earthshine fills them).
@@ -36,7 +40,7 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
   const override = useApp((s) => s.sunOverride);
   const expert = useExpert();
   const key = loc ? `${loc.lat},${loc.lon}` : "";
-  const elev = useLatest(() => (loc ? api.elevation(loc, TILE_KM, TILE_RES) : null), key);
+  const elev = useLatest(() => (loc ? api.elevation(loc, TILE_KM, TILE_RES).then((d) => ({ k: key, d })) : null), key);
   const hour = hourKey(time);
   const state = useLatest(() => (loc ? api.state(loc, hour) : null), `${key}|${hour}`);
   const sun = state.data ? { alt: override?.alt ?? state.data.sun.altitude, az: override?.az ?? state.data.sun.azimuth } : null;
@@ -47,9 +51,25 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
   const jump = useRef<{ e: number; n: number } | null>(null);
   useEffect(() => { jump.current = { e: 0, n: -60 }; }, [key]); // new site → stand next to the lander
 
-  const grid = elev.data?.grid;
+  const fineTile = useLatest(() => (loc ? api.elevation(loc, FINE_KM, FINE_RES).then((d) => ({ k: key, d })) : null), `fine|${key}`);
+  const grid = elev.data?.k === key ? elev.data.d.grid : undefined;
+  const fine =fineTile.data?.k === key ? fineTile.data.d.grid : null;
   const ref = grid ? grid[TILE_RES >> 1][TILE_RES >> 1] : 0; // heights relative to the landing site
-  const ground = useMemo(() => (grid ? (e: number, n: number) => sampleTile(grid, TILE_M, e, n) - ref + detail(e, n) : null), [grid, ref]);
+  // Measured height (20 m data near the site, 39 m beyond, blended) plus estimated detail finer than that data.
+  const ground = useMemo(() => {
+    if (!grid) return null;
+    const coarse = (e: number, n: number) => sampleTile(grid, TILE_M, e, n) - ref + detail(e, n, TILE_STEP);
+    if (!fine) return coarse;
+    return (e: number, n: number) => {
+      const d = Math.max(Math.abs(e), Math.abs(n));
+      if (d >= FINE_M / 2) return coarse(e, n);
+      const f = sampleTile(fine, FINE_M, e, n) - ref + detail(e, n, FINE_STEP);
+      const t = (d - (FINE_M / 2 - BLEND_M)) / BLEND_M;
+      if (t <= 0) return f;
+      const w = t * t * (3 - 2 * t);
+      return f * (1 - w) + coarse(e, n) * w;
+    };
+  }, [grid, fine, ref]);
 
   // Is the explorer in sunlight? March toward the Sun over the measured terrain.
   const lit = useMemo(() => {
@@ -105,7 +125,8 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
       </div>
       <div className="muted small">
         Drag to look around · <b>W/S</b> or <b>↑/↓</b> walk · <b>A/D</b> step sideways · <b>←/→</b> turn · hold <b>Shift</b> for rover speed · click the mini-map to jump.
-        {" "}<span className="estimate-note">Ground detail finer than ~80 m (small craters, bumps) is an <b>estimate</b>: it follows real crater statistics but is not measured.</span>
+        {" "}Height data: {fine ? `${Math.round(FINE_STEP)} m per sample within ${FINE_KM / 2} km of the site, ` : "loading the 20 m data near the site… "}{Math.round(TILE_STEP)} m beyond.
+        {" "}<span className="estimate-note">Anything smaller than that (small craters, bumps, grain) is an <b>estimate</b>: it follows real crater statistics but is not measured.</span>
         {" "}Heights are true scale (no exaggeration).
       </div>
     </div>

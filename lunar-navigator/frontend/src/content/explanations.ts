@@ -14,6 +14,8 @@ export const explain = {
     "The Sun goes all the way around the pole once every 29.5 Earth days, always just skimming the horizon. Press ▶ next to the date to watch it. Warm ground is in sunlight right now and blue ground is in shadow. Tall rims and mountains catch the light, while deep crater floors never do. A site that stays lit for longer can charge its batteries, so it scores better.",
   profile:
     "This is a side-on slice through the ground, like cutting a cake. Orange ground gets sunlight, blue ground is in shadow. Press ▶ to watch a whole lunar day (about 29.5 Earth days) go by. The bar underneath shows which spots got the most sun over that day. Turn the slice to point it toward the Sun and see the longest shadows.",
+  profileEarth:
+    "Radio travels in straight lines, just like light. If a crater wall stands between the lander and Earth, the signal is blocked. Blue ground can see Earth and talk to home directly. Red ground cannot, and would need a relay satellite. Near the pole Earth sits very low in the sky and bobs up and down over a month, so contact comes and goes.",
   // TODO(GEO): add text for split view, mission panel, timeline, resources, seasons
 };
 

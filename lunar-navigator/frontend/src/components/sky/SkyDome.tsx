@@ -2,6 +2,7 @@
 //   A–H sites: Sun/Earth and the 360° terrain skyline come from the evaluation engine (GET /api/sites/{id}),
 //              the same numbers its GO / NO-GO decision uses.
 //   custom points: Sun/Earth from /api/ephemeris/state (flat horizon).
+//   Dotted paths: where the Sun and Earth travel over the lunar day that starts at the chosen date.
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
@@ -10,6 +11,7 @@ import ExplainCard from "../learn/ExplainCard";
 
 const R = 100;
 const MIN_ALT = -10;
+const LUNAR_DAY_DAYS = 29.53;
 const toXY = (alt: number, az: number) => {
   const r = R * (1 - Math.max(alt, MIN_ALT) / 90); // below horizon drawn just outside the circle
   const a = (az * Math.PI) / 180;
@@ -18,11 +20,20 @@ const toXY = (alt: number, az: number) => {
 
 export default function SkyDome() {
   const time = useApp((s) => s.time);
+  const baseTime = useApp((s) => s.baseTime);
   const loc = useApp((s) => s.location());
   const mode = useApp((s) => s.mode);
   const details = useApp((s) => s.details);
   const engine = loc?.site ? details : null;
   const ours = useApi(() => (loc && !loc.site ? api.state(loc, time.toISOString()) : null), [loc?.lat, loc?.lon, !!loc?.site, time.getTime()]);
+  const win = useApi(() => (loc ? api.windows(loc, baseTime.toISOString(), LUNAR_DAY_DAYS, 120) : null),
+    [loc?.lat, loc?.lon, baseTime.getTime()]);
+
+  // The engine raises angles for high sites (you see past the flat horizon from a peak); apply the same
+  // shift to the paths so the ☀/🌍 icons sit on them.
+  const dip = engine?.ephemeris.relief_dip_deg ?? 0;
+  const path = (alt: "sun_alt" | "earth_alt", az: "sun_az" | "earth_az") =>
+    (win.data?.series ?? []).map((p) => { const q = toXY(p[alt] + dip, p[az]); return `${q.x.toFixed(1)},${q.y.toFixed(1)}`; }).join(" ");
 
   const sunPos = engine
     ? { alt: engine.ephemeris.sun.elevation_deg, az: engine.ephemeris.sun.azimuth_deg }
@@ -36,7 +47,8 @@ export default function SkyDome() {
   // terrain skyline polygon (ground fills from the skyline out to the edge)
   const skyline = engine?.horizon_angles_deg.map((h, az) => toXY(h, az));
   const skylinePath = skyline && `M${skyline.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join("L")}Z`;
-  const ring = `M0,${-R * (1 - MIN_ALT / 90)}A${R * (1 - MIN_ALT / 90)},${R * (1 - MIN_ALT / 90)} 0 1 0 0.01,${-R * (1 - MIN_ALT / 90)}Z`;
+  const rr = R * (1 - MIN_ALT / 90);
+  const ring = `M0,${-rr}A${rr},${rr} 0 1 0 0.01,${-rr}Z`;
 
   const sun = sunPos && toXY(sunPos.alt, sunPos.az);
   const earth = earthPos && toXY(earthPos.alt, earthPos.az);
@@ -54,6 +66,12 @@ export default function SkyDome() {
           const p = toXY(-14, i * 90);
           return <text key={l} x={p.x} y={p.y + 4} fill="#889" fontSize="11" textAnchor="middle">{l}</text>;
         })}
+        {win.data && (
+          <>
+            <polyline points={path("sun_alt", "sun_az")} fill="none" stroke="var(--sun)" strokeWidth={1.2} strokeDasharray="1 4" strokeLinecap="round" />
+            <polyline points={path("earth_alt", "earth_az")} fill="none" stroke="var(--earth)" strokeWidth={1.2} strokeDasharray="1 4" strokeLinecap="round" />
+          </>
+        )}
         {sun && <text x={sun.x} y={sun.y + 6} fontSize="18" textAnchor="middle" opacity={sunLit ? 1 : 0.35}>☀️</text>}
         {earth && <text x={earth.x} y={earth.y + 6} fontSize="18" textAnchor="middle" opacity={earthUp ? 1 : 0.35}>🌍</text>}
       </svg>
@@ -63,6 +81,7 @@ export default function SkyDome() {
           {" "}· at {engine.query_timestamp_utc.slice(11, 16)} UTC
         </div>
       )}
+      <div className="muted small">Dotted lines: path of the <span style={{ color: "var(--sun)" }}>Sun</span> and <span style={{ color: "var(--earth)" }}>Earth</span> over this lunar day. Outside the circle = below the horizon.</div>
       {mode === "expert" && sunPos && earthPos && (
         <table>
           <tbody>

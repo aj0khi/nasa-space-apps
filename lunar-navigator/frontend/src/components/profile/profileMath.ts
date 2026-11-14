@@ -50,14 +50,16 @@ export function shade(s: Slice, sun: InSection): { lit: boolean[]; top: number[]
   return { lit, top };
 }
 
-/** Hours of direct sun at every point across the whole time series. */
-export function sunHours(s: Slice, series: SeriesPoint[], bearing: number): number[] {
+export type Body = "sun" | "earth";
+
+/** Hours of direct sun (or of direct line of sight to Earth) at every point across the whole time series. */
+export function sunHours(s: Slice, series: SeriesPoint[], bearing: number, body: Body = "sun"): number[] {
   const hours = new Array(s.x.length).fill(0);
   // each sample stands for the interval up to the next one, so the total equals the series span
   for (let j = 0; j + 1 < series.length; j++) {
     const a = series[j], b = series[j + 1];
     const dtH = (Date.parse(b.time) - Date.parse(a.time)) / 3.6e6;
-    const sun = inSection(a.sun_alt, a.sun_az, bearing);
+    const sun = body === "sun" ? inSection(a.sun_alt, a.sun_az, bearing) : inSection(a.earth_alt, a.earth_az, bearing);
     if (!sun.up) continue;
     const { lit } = shade(s, sun);
     for (let i = 0; i < lit.length; i++) if (lit[i]) hours[i] += dtH;

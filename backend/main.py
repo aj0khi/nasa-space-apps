@@ -176,14 +176,14 @@ try:
         return data
 
     @app.get("/")
-    def serve_root():
+    def serve_root() -> Any:
         index_file = FRONTEND_DIR / "index.html"
         if index_file.exists():
             return FileResponse(index_file)
         return {"message": "Lunar Landing Site Navigator API running. Visit /api/sites"}
 
 except ImportError:
-    app = None
+    app = None  # type: ignore[assignment]
 
 
 class NavigatorHTTPRequestHandler(BaseHTTPRequestHandler):

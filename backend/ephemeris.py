@@ -5,15 +5,27 @@ Computes topocentric Azimuth (0-360 deg, North=0, East=90) and Elevation (-90 to
 of the Sun and Earth as seen from any Selenographic coordinate (lat, lon, elevation_m)
 at any UTC timestamp.
 
-Uses IAU/JPL Lunar Libration & Solar/Terrestrial Orbital Elements for <0.5ms evaluation,
-plus a live connector to NASA's JPL Horizons REST API (`https://ssd.jpl.nasa.gov/api/horizons.api`).
+Primary Source:
+- Live NASA JPL Horizons REST API (`https://ssd.jpl.nasa.gov/api/horizons.api`)
+  using `COMMAND='301'`, `CENTER='500@399'`, `QUANTITIES='14,15'` (`ObsSub-LON`, `ObsSub-LAT`,
+  `SunSub-LON`, `SunSub-LAT`), fetching an entire 30-day window (121 timestamps at 6h steps)
+  in a single HTTP request and caching it in memory.
+
+Fallback Source:
+- Analytical IAU/JPL Lunar Libration & Solar/Terrestrial Orbital Elements if offline.
 """
 
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 from typing import Any, Dict, Tuple
 import requests
+
+
+# In-memory cache of NASA JPL Horizons sub-solar & sub-earth coordinates
+# Keyed by UTC timestamp string: "YYYY-MM-DD HH:MM"
+_HORIZONS_SUBPOINTS_CACHE: Dict[str, Dict[str, Any]] = {}
+_LAST_EPHEMERIS_SOURCE: str = "NASA JPL Horizons Live REST API (DE441)"
 
 
 def parse_iso_utc(date_str: str | None) -> datetime:
@@ -39,12 +51,110 @@ def julian_date(dt: datetime) -> float:
     return unix_ts / 86400.0 + 2440587.5
 
 
-def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, float]:
+def prefetch_horizons_window(
+    center_dt: datetime, scan_days: int = 15, step_hours: int = 6
+) -> bool:
     """
-    Computes the Selenographic Sub-Solar and Sub-Earth (Lat, Lon) in degrees
-    using IAU lunar orientation and optical libration parameters (Cassini's laws + JPL DE series).
+    Fetches a 30-day (`-scan_days` to `+scan_days`) table of Selenographic Sub-Earth
+    (`ObsSub-LON`, `ObsSub-LAT`) and Sub-Solar (`SunSub-LON`, `SunSub-LAT`) coordinates
+    from the live NASA JPL Horizons API (`COMMAND='301'`, `CENTER='500@399'`, `QUANTITIES='14,15'`)
+    in a single HTTP GET request and stores all steps in `_HORIZONS_SUBPOINTS_CACHE`.
     """
-    jd = julian_date(dt)
+    global _LAST_EPHEMERIS_SOURCE
+    start_dt = center_dt - timedelta(days=scan_days)
+    stop_dt = center_dt + timedelta(days=scan_days)
+
+    start_key = start_dt.strftime("%Y-%m-%d %H:%M")
+    center_key = center_dt.strftime("%Y-%m-%d %H:%M")
+    stop_key = stop_dt.strftime("%Y-%m-%d %H:%M")
+
+    # If this 30-day window is already cached, no network request is needed
+    if (
+        start_key in _HORIZONS_SUBPOINTS_CACHE
+        and center_key in _HORIZONS_SUBPOINTS_CACHE
+        and stop_key in _HORIZONS_SUBPOINTS_CACHE
+    ):
+        return True
+
+    params = {
+        "format": "json",
+        "COMMAND": "'301'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'OBSERVER'",
+        "CENTER": "'500@399'",
+        "START_TIME": f"'{start_key}'",
+        "STOP_TIME": f"'{stop_key}'",
+        "STEP_SIZE": f"'{step_hours} h'",
+        "QUANTITIES": "'14,15'",
+        "CSV_FORMAT": "'YES'",
+    }
+
+    url = "https://ssd.jpl.nasa.gov/api/horizons.api"
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        result_text = resp.json().get("result", "")
+        if "$$SOE" not in result_text or "$$EOE" not in result_text:
+            return False
+
+        soe_block = result_text.split("$$SOE")[1].split("$$EOE")[0].strip()
+        parsed_count = 0
+        for line in soe_block.splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 7:
+                continue
+            # Format: "2026-Nov-16 18:00", "", "", ObsSub-LON, ObsSub-LAT, SunSub-LON, SunSub-LAT
+            dt_row = datetime.strptime(parts[0], "%Y-%b-%d %H:%M").replace(tzinfo=timezone.utc)
+            row_key = dt_row.strftime("%Y-%m-%d %H:%M")
+
+            obs_lon = float(parts[3])
+            obs_lat = float(parts[4])
+            sun_lon = float(parts[5])
+            sun_lat = float(parts[6])
+
+            if obs_lon > 180.0:
+                obs_lon -= 360.0
+            if sun_lon > 180.0:
+                sun_lon -= 360.0
+
+            _HORIZONS_SUBPOINTS_CACHE[row_key] = {
+                "julian_date": round(julian_date(dt_row), 5),
+                "sub_solar_lat": sun_lat,
+                "sub_solar_lon": sun_lon,
+                "sub_earth_lat": obs_lat,
+                "sub_earth_lon": obs_lon,
+                "source": "NASA JPL Horizons Live REST API (DE441)",
+            }
+            parsed_count += 1
+
+        if parsed_count > 0:
+            _LAST_EPHEMERIS_SOURCE = "NASA JPL Horizons Live REST API (DE441)"
+            return True
+    except Exception:
+        pass
+
+    _LAST_EPHEMERIS_SOURCE = "Analytical IAU/JPL Lunar Ephemeris (Offline Fallback)"
+    return False
+
+
+def get_ephemeris_source() -> str:
+    """Returns whether the active ephemeris data came from live NASA JPL Horizons or fallback."""
+    return _LAST_EPHEMERIS_SOURCE
+
+
+def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, Any]:
+    """
+    Returns Selenographic Sub-Solar and Sub-Earth (Lat, Lon) in degrees.
+    Checks the live NASA JPL Horizons cache first, and falls back to analytical
+    IAU/JPL lunar orientation equations if offline or outside the cached grid.
+    """
+    utc_dt = dt.astimezone(timezone.utc)
+    key = utc_dt.strftime("%Y-%m-%d %H:%M")
+    if key in _HORIZONS_SUBPOINTS_CACHE:
+        return _HORIZONS_SUBPOINTS_CACHE[key]
+
+    jd = julian_date(utc_dt)
     d = jd - 2451545.0  # Days since J2000.0
 
     # Fundamental orbital arguments (degrees)
@@ -54,11 +164,11 @@ def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, float]:
     F = (93.2720950 + 13.22935024 * d) % 360.0
 
     # 1. Sub-Solar Selenographic Coordinates:
-    sub_solar_lon = (360.0 - D + 180.0 - 1.5 * math.sin(math.radians(M_sun))) % 360.0
+    sub_solar_lon = (205.4 - D - 1.5 * math.sin(math.radians(M_sun))) % 360.0
     if sub_solar_lon > 180.0:
         sub_solar_lon -= 360.0
 
-    sub_solar_lat = -1.5424 * math.sin(math.radians(F - D + 42.0))
+    sub_solar_lat = -1.55 * math.sin(math.radians(F - D + 42.0))
 
     # 2. Sub-Earth Selenographic Coordinates (Optical Libration in Longitude & Latitude):
     lib_lon = (
@@ -66,7 +176,7 @@ def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, float]:
         + 1.274 * math.sin(math.radians(2 * D - M_moon))
         + 0.658 * math.sin(math.radians(2 * D))
     )
-    lib_lat = -6.683 * math.sin(math.radians(F)) + 0.28 * math.sin(math.radians(M_moon + F))
+    lib_lat = 6.683 * math.sin(math.radians(F)) - 0.28 * math.sin(math.radians(M_moon + F))
 
     return {
         "julian_date": round(jd, 5),
@@ -74,6 +184,7 @@ def sub_solar_and_earth_selenographic(dt: datetime) -> Dict[str, float]:
         "sub_solar_lon": sub_solar_lon,
         "sub_earth_lat": lib_lat,
         "sub_earth_lon": lib_lon,
+        "source": "Analytical IAU/JPL Lunar Ephemeris",
     }
 
 
@@ -137,6 +248,7 @@ def compute_sun_and_earth_angles(
     return {
         "timestamp_utc": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "julian_date": sub["julian_date"],
+        "ephemeris_source": sub.get("source", _LAST_EPHEMERIS_SOURCE),
         "relief_dip_deg": round(relief_dip_deg, 3),
         "sun": {
             "azimuth_deg": sun_az,
@@ -164,8 +276,6 @@ def query_jpl_horizons_live(
     surface site (`CENTER='coord@301'`).
     Target '10' = Sun, '399' = Earth.
     """
-    from datetime import timedelta
-
     start_str = dt.strftime("%Y-%m-%d %H:%M")
     stop_str = (dt + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
     elev_km = round(elevation_m / 1000.0, 3)

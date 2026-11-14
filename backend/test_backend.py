@@ -10,6 +10,7 @@ def run_tests() -> None:
     print("=== 1. Testing GET /api/sites (Nov 16, 2026 18:00 UTC) ===")
     code, res = handle_api_route("/api/sites", {"date": ["2026-11-16T18:00:00Z"]})
     assert code == 200
+    print(f"Ephemeris Source: {res['ephemeris_source']}")
     print(f"Viable Sites: {res['summary']['viable_sites_count']} / {res['summary']['total_sites']}")
     print(f"Recommended Backup: Site {res['summary']['recommended_backup_site']} ({res['summary']['recommended_backup_name']})")
     for s in res["sites"]:
@@ -43,6 +44,17 @@ def run_tests() -> None:
     )
     assert code_cmp == 200
     print("Recommended Scenario:", cmp_res["recommended"])
+
+    print("\n=== 4. Testing GET /api/horizons-validate (NASA JPL Horizons Live Check) ===")
+    code_hz, hz_res = handle_api_route(
+        "/api/horizons-validate",
+        {"site_id": ["A"], "date": ["2026-11-16T18:00:00Z"]},
+    )
+    assert code_hz == 200
+    assert "ephemeris_source" in hz_res["local_ephemeris"]
+    assert len(detail_a["window"]["timeline_6h"]) == 121  # 30 days at 6h steps (-15d to +15d)
+    print(f"30-Day Timeline Steps Verified: {len(detail_a['window']['timeline_6h'])} steps (6h intervals)")
+    print(f"Horizons Endpoint Status: {hz_res['nasa_jpl_horizons']['status']}")
     print("\nAll backend tests passed!")
 
 

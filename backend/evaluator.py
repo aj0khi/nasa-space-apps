@@ -17,7 +17,12 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ephemeris import compute_sun_and_earth_angles, parse_iso_utc
+from ephemeris import (
+    compute_sun_and_earth_angles,
+    get_ephemeris_source,
+    parse_iso_utc,
+    prefetch_horizons_window,
+)
 from preprocess_terrain import generate_terrain_data
 
 
@@ -334,6 +339,7 @@ def evaluate_all_sites(
     Powers the Map Canvas and the `IDEAL LANDING LOCATIONS` (A-H) grid.
     """
     dt = parse_iso_utc(date_str)
+    prefetch_horizons_window(dt, scan_days=15, step_hours=6)
     db = get_terrain_db()
     sites_dict = db["sites"]
 
@@ -384,6 +390,7 @@ def evaluate_all_sites(
 
     return {
         "query_timestamp_utc": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ephemeris_source": get_ephemeris_source(),
         "min_duration_days": min_duration_days,
         "south_pole_ephemeris": pole_ephem,
         "summary": {
@@ -407,6 +414,7 @@ def evaluate_site_details(
     - 30-day timeline array (6-hour steps)
     """
     dt = parse_iso_utc(date_str)
+    prefetch_horizons_window(dt, scan_days=15, step_hours=6)
     db = get_terrain_db()
     key = site_id.strip().upper()
     if key not in db["sites"]:

@@ -1,5 +1,7 @@
 // Typed API client. Owner: LEAD. One function per endpoint in docs/API.md.
-import type { ElevationGrid, Mask, MissionPlan, Profile, Score, Season, Site, SunEarthState, Vehicle, Windows } from "../types";
+import type {
+  ElevationGrid, Features, Illumination, Mask, MissionPlan, Profile, Score, Season, Site, SiteNow, SunEarthState, Vehicle, Windows,
+} from "../types";
 
 async function get<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
   const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
@@ -26,6 +28,10 @@ export const api = {
   windows: (p: LatLon, start: string, days = 30, step_min = 30) =>
     get<Windows>("/ephemeris/windows", { ...p, start, days, step_min }),
   seasons: (start: string) => get<Season[]>("/ephemeris/seasons", { start }),
+  illumination: (time: string, min_lat: number, res = 384) =>
+    get<Illumination>("/illumination/polar", { time, min_lat, res }),
+  features: () => get<Features>("/features"),
+  sitesNow: (time: string) => get<SiteNow[]>("/sites/now", { time }),
   elevation: (p: LatLon, size_km = 20, res = 128) => get<ElevationGrid>("/terrain/elevation", { ...p, size_km, res }),
   shadow: (p: LatLon, sun_alt: number, sun_az: number, size_km = 20, res = 128) =>
     get<Mask>("/terrain/shadow", { ...p, sun_alt, sun_az, size_km, res }),

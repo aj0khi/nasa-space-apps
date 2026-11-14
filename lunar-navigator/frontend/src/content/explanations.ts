@@ -10,6 +10,8 @@ export const explain = {
   shadowsToHeights: "Shadows tell us heights. A taller hill makes a longer shadow. If we know how high the Sun is, we can work out how tall the hill is.",
   southPole:
     "This is the bottom of the Moon, seen from straight above. The black-floored craters are permanently shadowed: the Sun never reaches them, so they stay colder than −200 °C and can trap water ice. Landing sites sit on the sunny edges right next to them.",
+  sunMap:
+    "The Sun goes all the way around the pole once every 29.5 Earth days, always just skimming the horizon. Press ▶ next to the date to watch it. Warm ground is in sunlight right now and blue ground is in shadow. Tall rims and mountains catch the light, while deep crater floors never do. A site that stays lit for longer can charge its batteries, so it scores better.",
   profile:
     "This is a side-on slice through the ground, like cutting a cake. Orange ground gets sunlight, blue ground is in shadow. Press ▶ to watch a whole lunar day (about 29.5 Earth days) go by. The bar underneath shows which spots got the most sun over that day. Turn the slice to point it toward the Sun and see the longest shadows.",
   // TODO(GEO): add text for split view, mission panel, timeline, resources, seasons

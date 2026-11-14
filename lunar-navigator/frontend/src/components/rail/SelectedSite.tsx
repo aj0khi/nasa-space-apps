@@ -1,6 +1,8 @@
 // SELECTED SITE: status, operating window (date range), available resources, cautions. Owner: LEAD (text: GEO).
 import { api } from "../../api/client";
 import { useApi } from "../../hooks/useApi";
+import { hourKey, useLatest } from "../../hooks/useLatest";
+import { scoreStart } from "../../hooks/useScores";
 import { fmtLat, fmtLon } from "../../lib/geo";
 import { CUSTOM_LETTER } from "../../lib/letters";
 import { go } from "../../router";
@@ -18,7 +20,8 @@ function operatingWindows(series: SeriesPoint[]) {
   const out: { start: string; end: string }[] = [];
   let open: string | null = null;
   for (const p of series) {
-    const ok = p.sun_alt > 0 && p.earth_alt > 0;
+    // above the terrain skyline, not just the flat horizon
+    const ok = p.sun_alt > p.sun_horizon && p.earth_alt > p.earth_horizon;
     if (ok && !open) open = p.time;
     if (!ok && open) { out.push({ start: open, end: p.time }); open = null; }
   }
@@ -29,8 +32,11 @@ function operatingWindows(series: SeriesPoint[]) {
 function cautions(w: Windows, terrainScore: number | undefined, verified: boolean | undefined) {
   const c: string[] = [];
   const maxSun = Math.max(...w.series.map((p) => p.sun_alt));
-  if (w.series[0]?.sun_alt <= 0) c.push("Lunar night right now. No solar power until sunrise.");
-  if (w.sunlit_fraction < 0.5) c.push(`Sun is up only ${Math.round(w.sunlit_fraction * 100)}% of the next 30 days.`);
+  const p0 = w.series[0];
+  if (p0 && !w.sun_visible_now && p0.sun_alt <= 0) c.push("Lunar night right now. No solar power until sunrise.");
+  else if (p0 && !w.sun_visible_now) c.push(`Sun is up (${p0.sun_alt.toFixed(1)}°) but hidden behind terrain ${p0.sun_horizon.toFixed(1)}° high, so this spot is in shadow.`);
+  if (w.sunlit_fraction === 0) c.push("No direct sunlight at all in the next 30 days. This could be a permanently shadowed cold trap.");
+  else if (w.sunlit_fraction < 0.5) c.push(`In sunlight only ${Math.round(w.sunlit_fraction * 100)}% of the next 30 days.`);
   if (maxSun > 0 && maxSun < 5) c.push(`Sun never rises above ${maxSun.toFixed(1)}°, so shadows are very long and solar panels need to stand upright.`);
   if (w.earth_visible_fraction === 0) c.push("Earth is never in view. You need a relay satellite to communicate.");
   else if (w.earth_visible_fraction < 1) c.push(`Earth is out of view ${Math.round((1 - w.earth_visible_fraction) * 100)}% of the time, so expect communication blackouts.`);
@@ -43,13 +49,14 @@ const fmt = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "s
 
 export default function SelectedSite({ letter }: { letter?: string }) {
   const time = useApp((s) => s.time);
-  const baseTime = useApp((s) => s.baseTime);
   const loc = useApp((s) => s.location());
   const key = loc ? `${loc.lat},${loc.lon}` : "";
-  const iso = time.toISOString();
+  const hour = hourKey(time);
+  const start = scoreStart(time).toISOString();
 
-  const w = useApi(() => (loc ? api.windows(loc, iso, 30, 60) : null), [key, iso], 400);
-  const score = useApi(() => (loc ? api.score(loc, baseTime.toISOString()) : null), [key, baseTime.getTime()], 300);
+  // windows follow the slider (hourly, keeps up while ▶ plays); score uses the same 6-hour steps as the list
+  const w = useLatest(() => (loc ? api.windows(loc, hour, 30, 60) : null), `${key}|${hour}`);
+  const score = useApi(() => (loc ? api.score(loc, start) : null), [key, start], 300);
 
   if (!loc) {
     return (
@@ -77,7 +84,26 @@ export default function SelectedSite({ letter }: { letter?: string }) {
       </div>
 
       <dl className="facts">
-        <dt>Status</dt>
+        <dt>Right now</dt>
+        <dd>
+          {w.data?.series[0] ? (() => {
+            const p = w.data.series[0];
+            return (
+              <ul className="plain">
+                <li className={w.data.sun_visible_now ? "now-on" : "now-off"}>
+                  {w.data.sun_visible_now ? "☀ In sunlight" : p.sun_alt > 0 ? "☾ In shadow (terrain blocks the Sun)" : "☾ Lunar night"}
+                  <span className="muted"> · Sun {p.sun_alt.toFixed(1)}°{w.data.terrain_horizon ? `, skyline ${p.sun_horizon.toFixed(1)}°` : ""}</span>
+                </li>
+                <li className={w.data.earth_visible_now ? "now-on" : "now-off"}>
+                  {w.data.earth_visible_now ? "📡 Earth in view" : "📡 No Earth contact"}
+                  <span className="muted"> · Earth {p.earth_alt.toFixed(1)}°</span>
+                </li>
+              </ul>
+            );
+          })() : "…"}
+        </dd>
+
+        <dt>Status <span className="muted small">(landing now, next 14 days)</span></dt>
         <dd>{st ? <span className={`mark ${st}`}>{STATUS[st].mark} {STATUS[st].word}</span> : "…"}
           {score.data && <span className="muted"> · {score.data.total}/100</span>}</dd>
 

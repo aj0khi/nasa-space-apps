@@ -37,6 +37,28 @@ Source of truth: `backend/app/models.py` ↔ `frontend/src/types.ts`. Keep them 
 ```
 The Sun's latitude on the Moon only swings ±1.54°, but at the pole that decides which rims stay lit.
 
+## Sun & shadows on the south-pole map
+`GET /api/illumination/polar?time=&min_lat=-80&res=384` → shaded-relief image lit by the real Sun (cached per hour)
+```json
+{ "time": "2026-11-14T20:00:00+00:00", "res": 384, "half_km": 316.4, "min_lat": -80,
+  "data": "<base64 res×res bytes: 255 = outside map, bit 7 = sunlit, bits 0–6 = brightness>",
+  "lit_fraction": 0.46,
+  "sun":   { "subsolar_lat": -1.56, "subsolar_lon": 116.5, "elevation_at_pole": 1.56 },
+  "earth": { "sub_lat": 5.1, "sub_lon": -3.2, "elevation_at_pole": -5.1 }, "synthetic": true }
+```
+Map coordinates are polar stereographic km, 0° longitude up, 90°E right (see `services/polar_dem.py`).
+
+`GET /api/sites/now?time=` → `SiteNow[]`, one per site south of 70°S: is it lit / in view of Earth **right now**, terrain included
+```json
+{ "id": "shackleton_rim", "sun_alt": 1.4, "sun_az": 254.1, "sun_horizon": -2.4, "sun_visible": true,
+  "earth_alt": -4.1, "earth_az": 2.0, "earth_horizon": -2.2, "earth_visible": false }
+```
+`sun_horizon` is the skyline height in the Sun's direction. It's **negative on peaks** (you look down past the Moon's curve), which is why rims see the Sun when flat ground can't.
+
+`GET /api/features` → craters and massifs drawn on the map and used to build the terrain model.
+
+`windows` now also returns `sun_visible_now`, `earth_visible_now`, `terrain_horizon`, and each series point carries `sun_horizon` / `earth_horizon`.
+
 ## Terrain
 `GET /api/terrain/elevation?lat=&lon=&size_km=20&res=128` → `{ "grid": number[][], "pixel_m": 156.25, "min": -4200, "max": 1800, "synthetic": true }`
 

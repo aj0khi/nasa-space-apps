@@ -1,4 +1,4 @@
-# TerraTwin
+# NAME
 
 A starter web app for the NASA Space Apps Challenge idea of finding Earth
 landscapes that can help prepare for future Moon and Mars missions.

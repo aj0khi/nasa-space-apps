@@ -24,9 +24,9 @@ export default function Countdowns() {
       {w.data ? (
         <table>
           <tbody>
-            {(w.data.series[0]?.sun_alt ?? 0) > 0
-              ? <tr><td>☀️ Sunset in</td><td>{until(w.data.next_sunset, time)}</td></tr>
-              : <tr><td>🌑 Lunar night. Sunrise in</td><td>{until(w.data.sun_events.find((e) => e.type === "rise")?.time ?? null, time)}</td></tr>}
+            {w.data.sun_visible_now
+              ? <tr><td>☀️ Sun goes behind the skyline in</td><td>{until(w.data.next_sunset, time)}</td></tr>
+              : <tr><td>🌑 In shadow. Sunlight returns in</td><td>{until(w.data.sun_events.find((e) => e.type === "rise")?.time ?? null, time)}</td></tr>}
             <tr><td>🌍 Earthset in</td><td>{until(w.data.next_earthset, time)}</td></tr>
             <tr><td>Sunlight (30 d)</td><td>{(w.data.sunlit_fraction * 100).toFixed(0)}%</td></tr>
             <tr><td>Earth visible</td><td>{(w.data.earth_visible_fraction * 100).toFixed(0)}%</td></tr>

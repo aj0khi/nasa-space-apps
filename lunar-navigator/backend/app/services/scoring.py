@@ -16,7 +16,8 @@ def score_site(windows: Windows, slope_deg: float) -> Score:
     lit_alts = np.array([p.sun_alt for p in windows.series if p.sun_alt > 0])
     mean_alt = float(lit_alts.mean()) if lit_alts.size else 0.0
     power = 100 * windows.sunlit_fraction * min(1.0, 0.4 + np.sin(np.radians(mean_alt)) * 2)
-    reasons.append(f"Sun above horizon {windows.sunlit_fraction:.0%} of the time (avg {mean_alt:.1f}° when up)")
+    where = "above the surrounding terrain" if windows.terrain_horizon else "above the horizon"
+    reasons.append(f"Sun {where} {windows.sunlit_fraction:.0%} of the time (avg {mean_alt:.1f}° when up)")
 
     # Comms: direct-to-Earth line of sight.
     comms = 100 * windows.earth_visible_fraction

@@ -14,6 +14,7 @@ import LandingList from "./components/rail/LandingList";
 import SelectedSite from "./components/rail/SelectedSite";
 import CoordsBar from "./components/rail/CoordsBar";
 import { useScores } from "./hooks/useScores";
+import { useLatest } from "./hooks/useLatest";
 import { CUSTOM_LETTER, siteLetters } from "./lib/letters";
 import { go, useRoute, View } from "./router";
 import { useApp } from "./state/store";
@@ -46,6 +47,13 @@ export default function App() {
   const letters = useMemo(() => siteLetters(sites), [sites]);
   const lettered = useMemo(() => sites.filter((s) => letters[s.id]), [sites, letters]);
   useScores(lettered);
+
+  // Sun → terrain → is each site lit / in contact with Earth at this exact moment?
+  const time = useApp((s) => s.time);
+  const setNow = useApp((s) => s.setNow);
+  const minuteKey = new Date(Math.floor(time.getTime() / 6e4) * 6e4).toISOString();
+  const now = useLatest(() => api.sitesNow(minuteKey), minuteKey);
+  useEffect(() => { if (now.data) setNow(now.data); }, [now.data, setNow]);
 
   const letter = selectedId ? letters[selectedId] ?? "•" : CUSTOM_LETTER;
   const hasSelection = !!(route.site || route.lat != null);

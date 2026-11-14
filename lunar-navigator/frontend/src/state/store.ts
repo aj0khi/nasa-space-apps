@@ -2,7 +2,7 @@
 // RULE: every view reads `time` and `location()` from here. Sliders and play buttons only ever set `time`.
 // The selected site comes from the URL (router.ts); App.tsx copies it in here.
 import { create } from "zustand";
-import type { Score, Site } from "../types";
+import type { Score, Site, SiteNow } from "../types";
 
 export type MapTab = "sun" | "shadows" | "rims";
 export type Mode = "beginner" | "expert";
@@ -16,8 +16,10 @@ interface AppState {
   mode: Mode;
   tab: MapTab;
   scores: Record<string, Score>;
+  now: Record<string, SiteNow>; // lit / Earth in view at `time`, per site
 
   setSites: (s: Site[]) => void;
+  setNow: (list: SiteNow[]) => void;
   select: (id: string) => void;
   setCustom: (lat: number, lon: number) => void;
   clearSelection: () => void;
@@ -38,8 +40,10 @@ export const useApp = create<AppState>((set, get) => ({
   mode: "beginner",
   tab: "sun",
   scores: {},
+  now: {},
 
   setSites: (sites) => set({ sites }),
+  setNow: (list) => set({ now: Object.fromEntries(list.map((n) => [n.id, n])) }),
   select: (id) => set({ selectedId: id, custom: null }),
   setCustom: (lat, lon) => set({ custom: { lat, lon }, selectedId: null }),
   clearSelection: () => set({ custom: null, selectedId: null }),

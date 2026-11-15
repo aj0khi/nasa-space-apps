@@ -72,3 +72,7 @@ No new dependencies. With the DEM in `backend/data/dem/` a new site takes about 
 slice light and under 30 s for the mini-map. With no DEM installed the backend reads NASA's copy over the network:
 measured 24 s, 32 s and 36 s for the same three. Everything is cached in `backend/data/cache/` afterwards.
 `LOLA_REMOTE=0` turns network reads off; the panel then falls back to the synthetic terrain and labels it.
+
+When the ground is a placeholder (a point north of 80° S, or terrain that could not be read), the panel shows a
+warning at the top: the shape is a stand-in, the height of the Sun or Earth is still real for that point, and
+away from the pole the Sun can stand far above the horizon.

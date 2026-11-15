@@ -501,8 +501,8 @@ input[type="range"]:disabled { opacity: 0.45; }
 .profile-map .minimap { width: 100%; }
 .profile-map .minimap-caption { display: none; }
 .profile-map.big .minimap-caption { display: block; height: auto; max-height: 150px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-.profile-map-size { position: absolute; bottom: 4px; right: 4px; padding: 1px 7px; font-size: 11px; line-height: 1.5; background: rgba(8, 10, 16, 0.78); }
-.profile-map.big .profile-map-size { top: 4px; bottom: auto; }
+.profile-map-size { position: absolute; top: 4px; right: 4px; padding: 1px 7px; font-size: 11px; line-height: 1.5; background: rgba(8, 10, 16, 0.78); }
+.profile-placeholder { margin: 0 0 10px; }
 @media (max-width: 760px) { .profile-head { flex-direction: column; } .profile-mapcol { align-self: center; } }
 .profile-reaim { cursor: pointer; }
 .profile-reaim:hover rect, .profile-reaim:focus-visible rect { fill: var(--line); }

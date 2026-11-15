@@ -15,7 +15,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
-import { compass } from "../../lib/geo";
+import { compass, fmtLat } from "../../lib/geo";
 import { useApp } from "../../state/store";
 import type { Section, SeriesPoint, Skyline, SliceLight } from "../../types";
 import ExplainCard from "../learn/ExplainCard";
@@ -685,6 +685,18 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   return (
     <div className="panel profile">
       <h3>Cross section {letter}–{letter}′: {body === "sun" ? "sunlight" : "contact with Earth"} along a slice through the site {sec?.synthetic && <small>(synthetic terrain)</small>}</h3>
+
+      {sec?.synthetic && loc && (
+        <div className="override-note profile-placeholder" role="note">
+          <b>Placeholder ground, not real terrain.</b>{" "}
+          {loc.lat > -80
+            ? `This point is at ${fmtLat(loc.lat)}, outside the south polar terrain data (80° S to the pole).`
+            : "The measured terrain could not be read for this point."}{" "}
+          The shape drawn below is a stand-in. The height of {body === "sun" ? "the Sun" : "Earth"} is real for this point
+          {loc.lat > -80 ? `, and away from the pole ${body === "sun" ? "the Sun" : "Earth"} can stand far above the horizon` : ""}.
+          For a real cross section, pick a landing site from the list on the right.
+        </div>
+      )}
 
       <div className="profile-head">
         <div className="profile-head-main">

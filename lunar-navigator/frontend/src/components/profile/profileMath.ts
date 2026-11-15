@@ -134,15 +134,18 @@ export interface InSlice {
   apparent: number; // that angle in degrees
   sunRight: boolean; // the body is toward the A end (+x)
   off: number; // angle between the body's azimuth and the slice line, 0…90°
-  along: boolean; // the slice points at the body (or straight away from it) to within half a step
+  along: boolean; // the slice points at the body (or straight away from it) to within IN_PAGE_DEG
 }
+
+/** A body counts as in the page within this many degrees of the slice line, at either end: 25% of a full turn. */
+export const IN_PAGE_DEG = 22.5;
 
 export function inSlice(alt: number, az: number, bearing: number): InSlice {
   const c = Math.cos((az - bearing) * D);
   const ac = Math.abs(c);
   const tanA = ac < 1e-6 ? (alt > 0 ? Infinity : alt < 0 ? -Infinity : 0) : Math.tan(alt * D) / ac;
   const off = Math.acos(Math.min(1, ac)) / D;
-  return { tanA, apparent: Math.atan(tanA) / D, sunRight: c >= 0, off, along: off <= STATE_STEP / 2 + 1e-6 };
+  return { tanA, apparent: Math.atan(tanA) / D, sunRight: c >= 0, off, along: off <= IN_PAGE_DEG + 1e-6 };
 }
 
 /**

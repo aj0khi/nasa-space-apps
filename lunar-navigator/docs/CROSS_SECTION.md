@@ -17,7 +17,8 @@ where it stops being trustworthy. It lives in the same place as before and keeps
    where the body crosses the skyline and move the time to 12 hours before. Dragging the slider then shows it sink
    behind, or rise over, the real terrain at its real angle.
 4. **A body off the slice is drawn as off the slice.** A side-on picture cannot show a direction that leaves the
-   page. When the Sun is more than 11.25° off the slice line it is drawn hollow at its real elevation, with the
+   page. The Sun counts as in the page within 22.5° of the slice line at either end (25% of a lunar day for a
+   locked slice); from 5° off, the caption says how many degrees to the side it is. When the Sun is more than 22.5° off the slice line it is drawn hollow at its real elevation, with the
    number of degrees off; no projected angle, sight line or 2-D shadow is drawn. A "Turn the slice to the Sun"
    button sits beside the hollow marker.
 5. **True ground colours.** `GET /api/terrain/slice-light` ray traces every ground point on the slice through the

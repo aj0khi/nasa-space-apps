@@ -4,7 +4,7 @@
 //   - The ground is measured terrain from GET /terrain/section (x_m / z_m with the Moon's curvature in z).
 //   - The slice is LOCKED to one direction: the Sun's direction when the site opens, a direction the user picks, or
 //     the direction of a sunrise or sunset ("event view"). "Follow the Sun" (16 fixed directions) is an option.
-//   - A body is "in the page" only within 11.25° of the slice line. In the page it gets a sight line at its true
+//   - A body is "in the page" only within 22.5° of the slice line (IN_PAGE_DEG). In the page it gets a sight line at its true
 //     angle. Off the page nothing is projected: a hollow marker at the true elevation, no sight line, no slice shadow.
 //   - Ground colours come from GET /terrain/slice-light (every point ray traced) when it answers. Otherwise the
 //     panel falls back to slice-only shading in the page, and to neutral ground off the page.
@@ -22,7 +22,7 @@ import ExplainCard from "../learn/ExplainCard";
 import { useExpert } from "../learn/ModeGate";
 import {
   DISC_RADIUS, EXAG_STEPS, EYE_M, R_MOON_M, STATES, STATE_STEP, bodyView, defaultExag, endShare, fmtDuration, fromSection,
-  groundAt, hoursInView, inSlice, nearestIndex, nearestOnGrid, normAz, shadeSlice, sightHit, skyEvents, skylineDistAt, snap16,
+  groundAt, hoursInView, IN_PAGE_DEG, inSlice, nearestIndex, nearestOnGrid, normAz, shadeSlice, sightHit, skyEvents, skylineDistAt, snap16,
   stateNumber, timeIndex, wholeDeg,
 } from "./profileMath";
 import type { Body, BodyView, SkyEvent, Slice } from "./profileMath";
@@ -303,7 +303,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     : sliceA), [mixed, sliceA, sliceB, turnF]);
   const radius = sec?.curvature ? R_MOON_M : Infinity;
 
-  // Where the body is relative to the slice. In the page = within 11.25° of the slice line, at either end.
+  // Where the body is relative to the slice. In the page = within IN_PAGE_DEG (22.5°) of the slice line, at either end.
   const place = now && targetAlt != null ? inSlice(targetAlt, targetAz, shown) : null;
   const inPage = !!place && place.along;
   const off = place ? place.off : 0;
@@ -313,7 +313,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   /** Put the body on the right or the left of the drawing: flip the view if it is in the page, else turn the slice to it. */
   const aim = (right: boolean) => {
     if (!now) return;
-    if (follow || inPage) { setMirror(toA ? !right : right); return; }
+    if (follow || (inPage && off <= 5)) { setMirror(toA ? !right : right); return; } // already aimed: only flip sides
     lockTo(wholeDeg(targetAz));
     setMirror(!right);
   };
@@ -588,11 +588,13 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   // The two fixed lines at the top of the drawing. The angle is always the real one from the ephemeris.
   const hidden = !!seen && seen.state === "hidden";
   const angleText = targetAlt == null ? "" : `${view.name} ${aboveBelow(targetAlt)}${inPage ? "" : `, ${off.toFixed(0)}° off this slice`}`;
+  // In the page but not dead on the slice line: say how far to the side, so the picture stays honest.
+  const aside = inPage && off >= 5 ? ` · ${view.the} is ${off.toFixed(0)}° to the side of the slice` : "";
   const lineText = targetAlt == null ? "" : !inPage ? `Off this slice, toward ${compass(targetAz)}: hollow marker at its real height, no sight line`
     : targetAlt <= 0 && (!seen || hidden) ? view.down
     : hidden ? `${view.The} is below the terrain skyline in its direction: out of view from the lander`
-    : sight?.hit ? `Sight line meets the ground on this slice ${fmtDist(sight.hit.distM)} out`
-    : "Sight line clears the ground on this slice";
+    : sight?.hit ? `Sight line meets the ground on this slice ${fmtDist(sight.hit.distM)} out${aside}`
+    : `Sight line clears the ground on this slice${aside}`;
   const scaleText = exag === 1 ? "drawn 1:1, no vertical stretch" : `heights ×${exag}; printed angles are real`;
 
   // What the slice is doing, in one line.
@@ -896,7 +898,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <Stat label="Shadow azimuth" value={now && sunShines ? `${((now.sun_az + 180) % 360).toFixed(0)}° (${compass(now.sun_az + 180)})` : "n/a"} sub={now && now.sun_alt > 0 ? `1 m rock → ${(1 / Math.tan((now.sun_alt * Math.PI) / 180)).toFixed(0)} m shadow` : undefined} />
           <Stat label="Sun azimuth" value={now ? `${now.sun_az.toFixed(0)}° (${compass(now.sun_az)})` : "…"} />
           <Stat label={`${view.name} off the slice line`} value={place ? `${off.toFixed(1)}°` : "…"}
-            sub={place ? (inPage ? "in the page (within 11.25°): sight line drawn at the real angle" : "off the page: hollow marker, nothing projected") : undefined} />
+            sub={place ? (inPage ? `in the page (within ${IN_PAGE_DEG}°): sight line drawn at the real angle` : "off the page: hollow marker, nothing projected") : undefined} />
           <Stat label={view.pct} value={shadePct != null ? `${shadePct}%` : now ? "n/a" : "…"} sub={shadeSub} />
           <Stat label={body === "sun" ? "Earth (ray traced)" : "Sun (ray traced)"}
             value={body === "sun" ? shortWords("earth", seenEarth) : shortWords("sun", seenSun)}

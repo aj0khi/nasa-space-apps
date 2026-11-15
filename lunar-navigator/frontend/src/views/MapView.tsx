@@ -1,4 +1,4 @@
-// 2D tab: a photographic south pole map and modeled Sun position. Owner: MAP.
+// 2D tab: the south pole map powered by NASA Moon Trek WMTS tiles + live Sun illumination, plus Topographic view. Owner: MAP.
 import { useState } from "react";
 import SouthPoleMap from "../components/map/SouthPoleMap";
 import TopoView from "../components/map/TopoView";
@@ -8,6 +8,7 @@ import { explain } from "../content/explanations";
 import { useApi } from "../hooks/useApi";
 import { fmtUtc, hourKey, useLatest } from "../hooks/useLatest";
 import { fmtLon } from "../lib/geo";
+import { TREK_SP_LAYERS, TrekLayerId } from "../lib/moontrek";
 import { go } from "../router";
 import { useApp } from "../state/store";
 
@@ -15,6 +16,14 @@ const EXTENTS = [
   { minLat: -84, label: "Pole" },
   { minLat: -80, label: "80°S" },
   { minLat: -70, label: "70°S" },
+];
+
+const TREK_OPTIONS: { id: TrekLayerId; label: string; title: string }[] = [
+  { id: "lola_shade", label: "LOLA Relief", title: TREK_SP_LAYERS.lola_shade.title },
+  { id: "wac", label: "WAC Photo", title: TREK_SP_LAYERS.wac.title },
+  { id: "lola_color", label: "Color Elev", title: TREK_SP_LAYERS.lola_color.title },
+  { id: "lola_slope", label: "Slope", title: TREK_SP_LAYERS.lola_slope.title },
+  { id: "none", label: "Synthetic", title: "Analytical ray-marched terrain model only" },
 ];
 
 interface Props {
@@ -26,7 +35,8 @@ export default function MapView({ onCursor }: Props) {
   const sites = useApp((s) => s.sites());
   const [minLat, setMinLat] = useState(-80);
   const [look, setLook] = useState<"lit" | "topo">("lit");
-  const [showRelief, setShowRelief] = useState(true);
+  const [trekLayer, setTrekLayer] = useState<TrekLayerId>("lola_shade");
+  const [showShadows, setShowShadows] = useState(true);
 
   const features = useApi(() => api.features(), [], 0);
   const hour = hourKey(time);
@@ -41,24 +51,65 @@ export default function MapView({ onCursor }: Props) {
   );
   if (look === "topo") return <TopoView modeSwitch={lookSwitch} />;
 
+  const activeSpec = trekLayer !== "none" ? TREK_SP_LAYERS[trekLayer] : null;
+
   return (
     <div className="mapview">
-      <SouthPoleMap sites={sites} features={features.data} illum={a} showRelief={showRelief}
-        selectedId={selectedId} custom={custom} minLat={minLat}
-        onSelect={(id) => go.site(id)} onPick={go.point} onCursor={onCursor} />
+      <SouthPoleMap
+        sites={sites}
+        features={features.data}
+        illum={a}
+        selectedId={selectedId}
+        custom={custom}
+        minLat={minLat}
+        trekLayer={trekLayer}
+        showShadows={showShadows}
+        onSelect={(id) => go.site(id)}
+        onPick={go.point}
+        onCursor={onCursor}
+      />
 
       <div className="map-overlay top-left">
-        {lookSwitch}
-        <div className="tabs" role="group" aria-label="Map extent">
-          {EXTENTS.map((e) => (
-            <button key={e.minLat} className={minLat === e.minLat ? "active" : ""} onClick={() => setMinLat(e.minLat)}>{e.label}</button>
-          ))}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {lookSwitch}
+          <div className="tabs" role="group" aria-label="Map extent">
+            {EXTENTS.map((e) => (
+              <button key={e.minLat} className={minLat === e.minLat ? "active" : ""} onClick={() => setMinLat(e.minLat)}>
+                {e.label}
+              </button>
+            ))}
+          </div>
+          <div className="tabs" role="group" aria-label="NASA Moon Trek Basemap">
+            {TREK_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                title={opt.title}
+                className={trekLayer === opt.id ? "active" : ""}
+                onClick={() => setTrekLayer(opt.id)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {trekLayer !== "none" && (
+            <label
+              className="tabs"
+              style={{ padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 12 }}
+              title="Overlay real-time solar illumination and shadows on top of NASA Moon Trek imagery"
+            >
+              <input
+                type="checkbox"
+                checked={showShadows}
+                onChange={(e) => setShowShadows(e.target.checked)}
+                style={{ margin: 0 }}
+              />
+              ☀️ Live Shadows
+            </label>
+          )}
         </div>
-        <div className="tabs" role="group" aria-label="Map appearance">
-          <button aria-pressed={showRelief} className={showRelief ? "active" : ""} onClick={() => setShowRelief(true)}>Sunlit relief</button>
-          <button aria-pressed={!showRelief} className={!showRelief ? "active" : ""} onClick={() => setShowRelief(false)}>NASA photo</button>
+        <div className="muted small">
+          ↑ 0° · toward Earth {activeSpec ? `· ${activeSpec.title}` : ""}
         </div>
-        <div className="muted small">↑ 0° · toward Earth</div>
       </div>
 
       <div className="map-overlay top-mid sunbox">
@@ -92,15 +143,11 @@ export default function MapView({ onCursor }: Props) {
           <span><i className="sw psr" />cold-trap crater</span>
         </div>
         <div className="muted small">
-          Imagery: <a href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek / LRO WAC</a>.
-          Photo lighting is fixed. Sunlit relief models changing shadows using LOLA elevation.
+          {activeSpec
+            ? `Basemap: ${activeSpec.attribution} (${activeSpec.productLabel})`
+            : "Terrain is an analytical model; select a NASA Moon Trek layer above for real LRO imagery."}
         </div>
-        {showRelief && a && !a.synthetic && <div className="muted small">
-          LOLA model: {a.pixel_km.toFixed(1)} km pixels, {a.horizon_limit_km} km shadow range;
-          {" "}{Math.round(a.coverage_fraction * 100)}% of map modeled. Uncovered areas are blank.
-        </div>}
         <div className="muted small">Site ratings are exploratory, not validated landing guidance.</div>
-        {showRelief && a?.synthetic && <div className="muted small" role="status">LOLA DEM unavailable; select NASA photo to view the mosaic.</div>}
         {illum.error && <div className="error" role="status">Terrain lighting unavailable: {illum.error}</div>}
         {mode === "beginner" && (
           <details>

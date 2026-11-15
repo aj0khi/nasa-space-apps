@@ -111,6 +111,49 @@ the selected date.
 `POST /api/terrain/cross-section` body `{ "lat", "lon", "lines": [{ "azimuth": 0, "length_km": 10 }] }`
 → `{ "profiles": [{ "azimuth": 0, "distance_m": number[], "elevation_m": number[] }], "synthetic": true }`
 
+## Sight lines for the cross section (owner: LEAD)
+Additive. These do not change any endpoint above. Both read the LOLA DEM (a local file if installed, otherwise
+NASA's copy over the network) and fall back to the synthetic model, with `synthetic: true` and a `note`, when
+the DEM cannot be used or the point is north of 80°S.
+
+`GET /api/terrain/skyline?lat=&lon=` → `Skyline`: the ray-traced terrain skyline at the site.
+```json
+{ "lat": -84.8, "lon": 29.2, "observer_m": 2.0,
+  "elev_deg": [ 360 numbers ], "elev_max_deg": [ 360 ], "elev_min_deg": [ 360 ],
+  "dist_km": [ 360 numbers or null ], "seen_km": [ 360 ], "edge_needs_m": [ 360 numbers or null ],
+  "dem_top_m": 6975, "reach_km": 250.0, "site_elevation_m": 5334.4, "synthetic": false,
+  "source": "LOLA DEM LDEM_80S_20MPP_ADJ.TIF (read from NASA)", "note": "…" }
+```
+- `elev_deg[i]`: how high the terrain rises above the lander's horizontal at azimuth `i`° (clockwise from north),
+  seen from 2 m above the ground, with the Moon's curvature included. Mean over that degree.
+  **The Sun or Earth is in view when the centre of its disc is above `elev_deg` at its azimuth** (interpolate
+  between whole degrees). Do not add a separate curvature or "relief dip" term: it is already in the numbers.
+- `elev_max_deg`, `elev_min_deg`: highest and lowest skyline inside that degree, for testing the edges of the disc.
+- `dist_km[i]`: how far away the terrain that sets the skyline is. Under about 0.2 km it is the ground beside the
+  lander, and the answer then depends on the assumed 2 m eye height more than on anything else.
+- `seen_km[i]`: how far the terrain data reaches in that direction. The DEM stops at 80°S, so toward the north it
+  can end before `reach_km`. `edge_needs_m[i]` is the elevation that ground just past the edge would need in order
+  to rise above the skyline found (null where the data reaches all the way); compare it with `dem_top_m`, the
+  highest ground in the whole file. `note` says this in words.
+
+Accuracy: against an independent full-resolution calculation at six sites the skyline agrees to 0.007° RMS,
+0.04° worst case. The Sun's radius is 0.27°. Sampling: 8 rays per degree; 1 m steps to 300 m, 5 m to 2 km, then
+each step 0.3 % longer.
+
+`GET /api/terrain/section?lat=&lon=&azimuth=0&length_km=8` → `Section`: the ground along a straight slice
+through the site, `length_km` (0.5–150) toward `azimuth` and the same distance behind it.
+```json
+{ "azimuth": 90.0, "length_km": 8.0, "x_m": [ ... ], "z_m": [ ... ], "elevation_m": [ ... ],
+  "site_elevation_m": 5334.4, "curvature": true, "synthetic": false, "source": "…", "note": null }
+```
+`x_m` is negative behind the site and positive toward `azimuth`. `z_m` is height above the lander's ground point
+with curvature included, so a straight ray of light is a straight line when `x_m` and `z_m` share a scale.
+
+The first request for a site takes about 2 s from a local DEM and roughly 10 to 25 s when the DEM is read remotely.
+Results are cached in `backend/data/cache/` (not committed); the cache file names include a tag that changes
+with the code and settings. Set `LOLA_REMOTE=0` to forbid network reads. If the terrain cannot be read at all,
+`/terrain/section` answers 503.
+
 ## Viability score
 `GET /api/score?lat=&lon=&start=&days=14` → `Score`
 ```json

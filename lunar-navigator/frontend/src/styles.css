@@ -282,3 +282,14 @@ input[type="range"]:disabled { opacity: 0.45; }
   .home-overview { gap: 20px; padding-top: 52px; }
   .home-footer { align-items: flex-start; flex-direction: column; }
 }
+
+/* ---- Cross-section overhaul (LEAD): fixed slice directions, ray-traced answer, sight line. Additive. ---- */
+.profile-state { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 2px 0 6px; font-size: 13px; color: var(--muted); }
+.profile-state b { color: var(--text); font-weight: 650; }
+.profile-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 30px; margin-top: 8px; font-size: 13px; }
+.profile-hint span { border-left: 3px solid var(--yellow); padding-left: 10px; line-height: 1.4; }
+.profile-hint button { padding: 4px 10px; font-size: 13px; border-color: var(--sun); }
+.profile-source { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.45; max-width: 110ch; }
+.profile-legend .line.sight { height: 0; border-top: 2px dashed var(--text); border-radius: 0; background: none; }
+.profile-halo { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+

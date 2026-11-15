@@ -142,6 +142,40 @@ class CrossSectionResponse(BaseModel):
     synthetic: bool = False
 
 
+# ---------- Sight lines (cross section). Owner: LEAD ----------
+class Skyline(BaseModel):
+    """Ray-traced terrain skyline at a site: the Sun or Earth is in view when above it at its azimuth."""
+    lat: float
+    lon: float
+    observer_m: float
+    elev_deg: list[float]  # 360 values; index = azimuth in whole degrees, clockwise from north; mean over that degree
+    elev_max_deg: list[float] | None = None  # highest skyline inside that degree (compare with the Sun's lower limb)
+    elev_min_deg: list[float] | None = None  # lowest skyline inside that degree (compare with the Sun's upper limb)
+    dist_km: list[float | None]  # distance to the terrain that sets the highest skyline in that direction
+    seen_km: list[float] | None = None  # how far the DEM reaches in that direction; below reach_km = lower bound only
+    edge_needs_m: list[float | None] | None = None  # where the DEM ends early: elevation ground past the edge would need to raise the skyline
+    dem_top_m: float | None = None  # highest ground in the whole DEM, for judging edge_needs_m
+    reach_km: float  # how far the rays were marched
+    site_elevation_m: float | None = None
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
+class Section(BaseModel):
+    """Ground along a straight slice through a site, toward `azimuth` (positive x) and behind it."""
+    azimuth: float
+    length_km: float
+    x_m: list[float]
+    z_m: list[float]  # height above the lander's ground point; includes the Moon's curvature when `curvature`
+    elevation_m: list[float]
+    site_elevation_m: float
+    curvature: bool
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
 # ---------- Score ----------
 Status = Literal["green", "yellow", "red"]
 

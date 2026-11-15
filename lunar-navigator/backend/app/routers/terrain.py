@@ -1,8 +1,8 @@
 """Owner: TERRAIN."""
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import CrossSectionRequest, CrossSectionResponse, ElevationGrid, Mask, Profile
-from app.services import terrain
+from app.models import CrossSectionRequest, CrossSectionResponse, ElevationGrid, Mask, Profile, Section, Skyline
+from app.services import sightline, terrain
 
 router = APIRouter(prefix="/terrain", tags=["terrain"])
 
@@ -47,3 +47,25 @@ def cross_section(req: CrossSectionRequest):
         d, e = terrain.cross_section(grid, px, line.azimuth, line.length_km)
         profiles.append(Profile(azimuth=line.azimuth, distance_m=d, elevation_m=e))
     return CrossSectionResponse(profiles=profiles, synthetic=synthetic)
+
+
+# ---- Sight lines for the cross section (owner: LEAD). Additive: the endpoints above are unchanged. ----
+@router.get("/skyline", response_model=Skyline)
+def skyline(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-360, le=360)):
+    """Ray-traced 360° skyline from the LOLA DEM (synthetic fallback when the DEM cannot be used)."""
+    try:
+        return sightline.skyline(lat, lon)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/section", response_model=Section)
+def section(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-360, le=360),
+            azimuth: float = Query(0.0, ge=-360, le=360), length_km: float = Query(8.0, ge=0.5, le=150)):
+    """Ground along a slice through the site on the LOLA DEM (synthetic fallback when the DEM cannot be used)."""
+    try:
+        return sightline.section(lat, lon, azimuth, length_km)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # the synthetic fallback reads the same DEM and can fail the same way
+        raise HTTPException(status_code=503, detail=f"Terrain data could not be read: {exc}") from exc

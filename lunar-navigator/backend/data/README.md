@@ -43,3 +43,9 @@ unverified legacy assumptions, not LOLA measurements. Statuses and shadow estima
 are exploratory, not validated landing guidance.
 Credit [Barker et al. (2023)](https://doi.org/10.3847/PSJ/acf3e1) and the
 [NASA dataset](https://doi.org/10.60903/gsfcpgda-lola-spole).
+
+## Cross-section sight lines (owner: LEAD)
+`/api/terrain/skyline` and `/api/terrain/section` ray-trace the same LOLA DEM out to 250 km, using the file's
+built-in overviews for distant terrain. They use the local file when it is installed and otherwise read NASA's
+copy over the network, caching results in `cache/` (do not commit). `LOLA_REMOTE=0` turns network reads off.
+

@@ -88,6 +88,39 @@ export interface Mask { mask: number[][]; lit_fraction?: number | null; syntheti
 
 export interface Profile { azimuth: number; distance_m: number[]; elevation_m: number[] }
 
+/** GET /terrain/skyline: ray-traced terrain skyline seen from the lander (owner: LEAD). */
+export interface Skyline {
+  lat: number;
+  lon: number;
+  observer_m: number; // eye height above the ground
+  elev_deg: number[]; // 360 values; index = azimuth in whole degrees, clockwise from north; mean over that degree
+  elev_max_deg?: number[] | null; // highest skyline inside that degree
+  elev_min_deg?: number[] | null; // lowest skyline inside that degree
+  dist_km: (number | null)[]; // distance to the terrain that sets the skyline (null in the synthetic model)
+  seen_km?: number[] | null; // how far the terrain data reaches in that direction (it stops at 80°S)
+  edge_needs_m?: (number | null)[] | null; // where the data ends early: elevation that ground past the edge would need to raise the skyline
+  dem_top_m?: number | null; // highest ground in the whole terrain file
+  reach_km: number;
+  site_elevation_m?: number | null;
+  synthetic: boolean;
+  source: string;
+  note?: string | null;
+}
+
+/** GET /terrain/section: ground along a straight slice through the site (owner: LEAD). */
+export interface Section {
+  azimuth: number; // direction of positive x, degrees clockwise from north
+  length_km: number; // reach each way from the site
+  x_m: number[]; // negative behind the site (azimuth + 180), positive toward `azimuth`
+  z_m: number[]; // height relative to the lander's ground point; includes the Moon's curvature when `curvature`
+  elevation_m: number[];
+  site_elevation_m: number;
+  curvature: boolean;
+  synthetic: boolean;
+  source: string;
+  note?: string | null;
+}
+
 export interface Score {
   total: number;
   status: Status;

@@ -1,7 +1,7 @@
 // Typed API client. Owner: LEAD. One function per endpoint in docs/API.md.
 import type {
   CompareResult, ElevationGrid, EvalAll, Features, HorizonsCheck, Illumination, Mask, MissionPlan, Profile, Score, Season,
-  Site, SiteDetails, SunEarthState, Vehicle, Windows,
+  Section, Site, SiteDetails, Skyline, SunEarthState, Vehicle, Windows,
 } from "../types";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
@@ -47,6 +47,10 @@ export const api = {
   rims: (p: LatLon, size_km = 20, res = 128) => get<Mask>("/terrain/rims", { ...p, size_km, res }),
   crossSection: (p: LatLon, lines: { azimuth: number; length_km: number }[]) =>
     post<{ profiles: Profile[]; synthetic: boolean }>("/terrain/cross-section", { ...p, lines }),
+  // Sight lines for the cross section: ray-traced 360° skyline, and the ground along one slice (x_m / z_m).
+  skyline: (p: LatLon) => get<Skyline>("/terrain/skyline", { lat: p.lat, lon: p.lon }),
+  section: (p: LatLon, azimuth: number, length_km: number) =>
+    get<Section>("/terrain/section", { lat: p.lat, lon: p.lon, azimuth, length_km }),
   score: (p: LatLon, start: string, days = 14) => get<Score>("/score", { ...p, start, days }),
   missionPlan: (p: LatLon & { site_id?: string; vehicle: Vehicle; departure: string }) =>
     post<MissionPlan>("/mission/plan", p),

@@ -1,7 +1,9 @@
 // EXPLORE ON FOOT: drop an explorer on the surface and walk around at eye height, like street view.
 // Owner: Visualization.
-//   Measured: 20 km elevation tile (/api/terrain/elevation, ~78 m per sample) → the far terrain and horizon.
-//   Estimated: small craters and bumps below that resolution (lib/regolith.ts) on a 2.4 km patch around you.
+//   Measured (/api/terrain/elevation; real NASA LOLA heights when the DEM is installed, else the synthetic model):
+//     10 km at 20 m around the site · 20 km at ~39 m · 100 km at ~196 m for the skyline and distant shadows.
+//   Estimated: small craters and bumps below the data's resolution (lib/regolith.ts) on a patch around you.
+//   The Moon's curvature is applied, so distant terrain drops away as it really does (~720 m at 50 km).
 //   Sky: the real Sun and Earth at the slider time (/api/ephemeris/state), true scale, real terrain shadows.
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,7 +14,6 @@ import { compass, destination, fmtLat, fmtLon } from "../../lib/geo";
 import { detail, sampleTile } from "../../lib/regolith";
 import { useApp } from "../../state/store";
 import { useExpert } from "../learn/ModeGate";
-import { engravingMaterial, flatBrightness } from "./engraving";
 import { groundMaterial } from "./groundMaterial";
 
 const TILE_KM = 20;
@@ -22,16 +23,20 @@ const FINE_KM = 10, FINE_RES = 501, FINE_M = FINE_KM * 1000;
 const FINE_STEP = FINE_M / (FINE_RES - 1), TILE_STEP = (TILE_KM * 1000) / (TILE_RES - 1);
 const BLEND_M = 700; // fade from the 20 m data to the 39 m data over the last 700 m of the fine tile
 const TILE_M = TILE_KM * 1000;
+// Skyline: crater rims tens of km away decide what is lit when the Sun is 1–2° up.
+const WIDE_KM = 100, WIDE_RES = 511, WIDE_M = WIDE_KM * 1000;
+const R_MOON_M = 1_737_400;
+/** How far the surface curves away below a flat plane at this horizontal distance (m). */
+const drop = (e: number, n: number) => (e * e + n * n) / (2 * R_MOON_M);
 const PATCH_M = 1600; // detailed ground around the explorer
 const PATCH_SEG = 320; // 5 m spacing, so estimated craters down to ~10 m show
 const RECENTER_M = 450;
 const EYE_M = 1.8;
-const SKY_M = 60000; // distance at which Sun, Earth and stars are drawn
+const SKY_M = 95000; // distance at which Sun, Earth and stars are drawn (beyond the 100 km terrain)
 // No air on the Moon: direct sunlight is harsh and shadows are nearly black (only faint earthshine fills them).
 const SUN_I = 14, AMB_I = 0.04;
 const D = Math.PI / 180;
 
-type Look = "photo" | "engraving";
 interface Pose { e: number; n: number; yaw: number; pitch: number }
 
 export default function ExploreView({ onBack }: { onBack?: () => void }) {
@@ -46,24 +51,26 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
   const sun = state.data ? { alt: override?.alt ?? state.data.sun.altitude, az: override?.az ?? state.data.sun.azimuth } : null;
   const earth = state.data ? { alt: state.data.earth.altitude, az: state.data.earth.azimuth } : null;
 
-  const [look, setLook] = useState<Look>("photo");
   const [pose, setPose] = useState<Pose>({ e: 0, n: -60, yaw: 0, pitch: -4 });
   const jump = useRef<{ e: number; n: number } | null>(null);
   useEffect(() => { jump.current = { e: 0, n: -60 }; }, [key]); // new site → stand next to the lander
 
+  const wideTile = useLatest(() => (loc ? api.elevation(loc, WIDE_KM, WIDE_RES).then((d) => ({ k: key, d })) : null), `wide|${key}`);
+  const wide = wideTile.data?.k === key ? wideTile.data.d.grid : null;
   const fineTile = useLatest(() => (loc ? api.elevation(loc, FINE_KM, FINE_RES).then((d) => ({ k: key, d })) : null), `fine|${key}`);
   const grid = elev.data?.k === key ? elev.data.d.grid : undefined;
+  const synthetic = elev.data?.k === key ? elev.data.d.synthetic : undefined;
   const fine =fineTile.data?.k === key ? fineTile.data.d.grid : null;
   const ref = grid ? grid[TILE_RES >> 1][TILE_RES >> 1] : 0; // heights relative to the landing site
   // Measured height (20 m data near the site, 39 m beyond, blended) plus estimated detail finer than that data.
   const ground = useMemo(() => {
     if (!grid) return null;
-    const coarse = (e: number, n: number) => sampleTile(grid, TILE_M, e, n) - ref + detail(e, n, TILE_STEP);
+    const coarse = (e: number, n: number) => sampleTile(grid, TILE_M, e, n) - ref + detail(e, n, TILE_STEP) - drop(e, n);
     if (!fine) return coarse;
     return (e: number, n: number) => {
       const d = Math.max(Math.abs(e), Math.abs(n));
       if (d >= FINE_M / 2) return coarse(e, n);
-      const f = sampleTile(fine, FINE_M, e, n) - ref + detail(e, n, FINE_STEP);
+      const f = sampleTile(fine, FINE_M, e, n) - ref + detail(e, n, FINE_STEP) - drop(e, n);
       const t = (d - (FINE_M / 2 - BLEND_M)) / BLEND_M;
       if (t <= 0) return f;
       const w = t * t * (3 - 2 * t);
@@ -71,21 +78,22 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
     };
   }, [grid, fine, ref]);
 
-  // Is the explorer in sunlight? March toward the Sun over the measured terrain.
+  // Is the explorer in sunlight? March toward the Sun over the measured terrain, out to 50 km, with curvature.
   const lit = useMemo(() => {
     if (!grid || !sun || !ground) return null;
     if (sun.alt <= 0) return false;
     const h0 = ground(pose.e, pose.n) + EYE_M;
     const se = Math.sin(sun.az * D), sn = Math.cos(sun.az * D);
     let maxA = -90;
-    for (let d = 20; d < 12000; d *= 1.08) {
+    for (let d = 20; d < 50000; d *= 1.06) {
       const e = pose.e + se * d, n = pose.n + sn * d;
-      if (Math.abs(e) > TILE_M / 2 || Math.abs(n) > TILE_M / 2) break;
-      const h = (d < 600 ? ground(e, n) : sampleTile(grid, TILE_M, e, n) - ref) - h0;
-      maxA = Math.max(maxA, Math.atan2(h, d) / D);
+      const inTile = Math.abs(e) < TILE_M / 2 && Math.abs(n) < TILE_M / 2;
+      if (!inTile && (!wide || Math.abs(e) > WIDE_M / 2 || Math.abs(n) > WIDE_M / 2)) break;
+      const z = d < 600 ? ground(e, n) : (inTile ? sampleTile(grid, TILE_M, e, n) : sampleTile(wide!, WIDE_M, e, n)) - ref - drop(e, n);
+      maxA = Math.max(maxA, Math.atan2(z - h0, d) / D);
     }
     return sun.alt > maxA;
-  }, [grid, ref, ground, sun?.alt, sun?.az, Math.round(pose.e / 10), Math.round(pose.n / 10)]);
+  }, [grid, wide, ref, ground, sun?.alt, sun?.az, Math.round(pose.e / 10), Math.round(pose.n / 10)]);
 
   if (!loc) return <div className="panel"><p className="muted">Pick a landing site first.</p></div>;
   const here = destination(loc.lat, loc.lon, (Math.atan2(pose.e, pose.n) / D + 360) % 360, Math.hypot(pose.e, pose.n) / 1000);
@@ -96,10 +104,6 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
       <div className="topo-head">
         <h3>Explore on foot {elev.loading && <span className="spinner" aria-label="loading" />}</h3>
         <div className="topo-controls" style={{ margin: 0 }}>
-          <div className="tabs" role="group" aria-label="Look">
-            <button className={look === "photo" ? "active" : ""} onClick={() => setLook("photo")}>Realistic</button>
-            <button className={look === "engraving" ? "active" : ""} onClick={() => setLook("engraving")}>Engraving</button>
-          </div>
           <button onClick={() => { jump.current = { e: 0, n: -60 }; }}>Back to the lander</button>
           {onBack && <button onClick={onBack}>Leave</button>}
         </div>
@@ -107,8 +111,8 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
       <div className="explore-stage" tabIndex={0} aria-label="Ground-level view. Drag to look around, W A S D or arrow keys to walk.">
         {!grid || !ground ? <div className="profile-loading">{elev.error ?? "Landing the explorer…"}</div> : (
           <Canvas shadows camera={{ fov: 70, near: 0.5, far: 150000, up: [0, 0, 1], position: [0, -60, 2] }}
-            gl={{ antialias: true }} onCreated={({ scene }) => { scene.background = new THREE.Color(look === "photo" ? "#000000" : "#efe7d4"); }}>
-            <Scene grid={grid} refH={ref} ground={ground} look={look} sun={sun} earth={earth}
+            gl={{ antialias: true }} onCreated={({ scene }) => { scene.background = new THREE.Color("#000000"); }}>
+            <Scene grid={grid} wide={wide} refH={ref} ground={ground} sun={sun} earth={earth}
               pose={pose} onPose={setPose} jump={jump} />
           </Canvas>
         )}
@@ -125,7 +129,7 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
       </div>
       <div className="muted small">
         Drag to look around · <b>W/S</b> or <b>↑/↓</b> walk · <b>A/D</b> step sideways · <b>←/→</b> turn · hold <b>Shift</b> for rover speed · click the mini-map to jump.
-        {" "}Height data: {fine ? `${Math.round(FINE_STEP)} m per sample within ${FINE_KM / 2} km of the site, ` : "loading the 20 m data near the site… "}{Math.round(TILE_STEP)} m beyond.
+        {" "}Height data{synthetic === false ? " (NASA LOLA)" : synthetic ? " (synthetic model: the LOLA file is not installed)" : ""}: {fine ? `${Math.round(FINE_STEP)} m per sample within ${FINE_KM / 2} km of the site, ` : "loading the 20 m data near the site… "}{Math.round(TILE_STEP)} m to {TILE_KM / 2} km{wide ? `, ${Math.round(WIDE_M / (WIDE_RES - 1))} m out to ${WIDE_KM / 2} km for the skyline` : ""}. The Moon's curvature is included.
         {" "}<span className="estimate-note">Anything smaller than that (small craters, bumps, grain) is an <b>estimate</b>: it follows real crater statistics but is not measured.</span>
         {" "}Heights are true scale (no exaggeration).
       </div>
@@ -136,9 +140,9 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
 // ------------------------------------------------------------------------------------------------
 interface SceneProps {
   grid: number[][];
+  wide: number[][] | null;
   refH: number;
   ground: (e: number, n: number) => number;
-  look: Look;
   sun: { alt: number; az: number } | null;
   earth: { alt: number; az: number } | null;
   pose: Pose;
@@ -148,32 +152,41 @@ interface SceneProps {
 
 const dirVec = (alt: number, az: number) => new THREE.Vector3(Math.sin(az * D) * Math.cos(alt * D), Math.cos(az * D) * Math.cos(alt * D), Math.sin(alt * D));
 
-function Scene({ grid, refH, ground, look, sun, earth, pose, onPose, jump }: SceneProps) {
-  const { camera, gl, scene } = useThree();
+/** Terrain mesh from a backend tile (site at the centre), heights relative to the site, Moon curvature applied. */
+function tileGeometry(grid: number[][], sizeM: number, refH: number) {
+  const m = grid.length;
+  const g = new THREE.PlaneGeometry(sizeM, sizeM, m - 1, m - 1);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, grid[Math.floor(i / m)][i % m] - refH - drop(p.getX(i), p.getY(i)));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Leave out the triangles that lie inside a square hole (shrunk by one cell so the edges overlap the inner mesh). */
+function cutHole(g: THREE.BufferGeometry, m: number, sizeM: number, ce: number, cn: number, holeHalf: number) {
+  const px = sizeM / (m - 1), inner = holeHalf - px;
+  const idx: number[] = [];
+  for (let r = 0; r < m - 1; r++) for (let c = 0; c < m - 1; c++) {
+    const e0 = -sizeM / 2 + c * px, n0 = sizeM / 2 - r * px;
+    if (e0 > ce - inner && e0 + px < ce + inner && n0 - px > cn - inner && n0 < cn + inner) continue;
+    const a = r * m + c, b = a + 1, cc = a + m, d = cc + 1;
+    idx.push(a, cc, b, cc, d, b);
+  }
+  g.setIndex(idx);
+}
+
+function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump }: SceneProps) {
+  const { camera, gl } = useThree();
   const [center, setCenter] = useState({ e: 0, n: 0 });
-  useEffect(() => { scene.background = new THREE.Color(look === "photo" ? "#000000" : "#efe7d4"); }, [look, scene]);
-  // ---- terrain: far tile (measured) with a hole where the detailed patch sits
-  const far = useMemo(() => {
-    const m = grid.length;
-    const g = new THREE.PlaneGeometry(TILE_M, TILE_M, m - 1, m - 1);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) p.setZ(i, grid[Math.floor(i / m)][i % m] - refH);
-    g.computeVertexNormals();
+  // ---- terrain: 20 km tile with a hole where the detailed patch sits, inside a 100 km skyline ring
+  const far = useMemo(() => tileGeometry(grid, TILE_M, refH), [grid, refH]);
+  useMemo(() => cutHole(far, grid.length, TILE_M, center.e, center.n, PATCH_M / 2), [far, grid, center.e, center.n]);
+  const ring = useMemo(() => {
+    if (!wide) return null;
+    const g = tileGeometry(wide, WIDE_M, refH);
+    cutHole(g, wide.length, WIDE_M, 0, 0, TILE_M / 2);
     return g;
-  }, [grid, refH]);
-  useMemo(() => {
-    // drop triangles that lie fully inside the patch (shrunk by one tile cell so the edges overlap)
-    const m = grid.length, px = TILE_M / (m - 1), inner = PATCH_M / 2 - px;
-    const idx: number[] = [];
-    for (let r = 0; r < m - 1; r++) for (let c = 0; c < m - 1; c++) {
-      const e0 = -TILE_M / 2 + c * px, n0 = TILE_M / 2 - r * px;
-      const inside = e0 > center.e - inner && e0 + px < center.e + inner && n0 - px > center.n - inner && n0 < center.n + inner;
-      if (inside) continue;
-      const a = r * m + c, b = a + 1, cc = a + m, d = cc + 1;
-      idx.push(a, cc, b, cc, d, b);
-    }
-    far.setIndex(idx);
-  }, [far, grid, center.e, center.n]);
+  }, [wide, refH]);
 
   // ---- terrain: detailed patch around the explorer (measured + estimated detail)
   const patch = useMemo(() => {
@@ -187,15 +200,6 @@ function Scene({ grid, refH, ground, look, sun, earth, pose, onPose, jump }: Sce
   // ---- materials
   // matte (lunar soil has no shine) with metre-scale roughness that a low Sun picks out
   const photo = useMemo(() => groundMaterial(), []);
-  const engr = useMemo(() => engravingMaterial({ interval: 4, hatch: 3 }), []);
-  const engrFar = useMemo(() => engravingMaterial({ interval: 50, hatch: 40 }), []);
-  useEffect(() => {
-    const f = flatBrightness(sun?.alt ?? 0, sun && sun.alt > 0 ? SUN_I : 0, AMB_I * (look === "engraving" ? 4 : 1));
-    engr.uniforms.uFlat.value = f;
-    engrFar.uniforms.uFlat.value = f;
-  }, [sun?.alt, engr, engrFar, look]);
-  const mat = look === "photo" ? photo : engr.material;
-  const matFar = look === "photo" ? photo : engrFar.material;
 
   // ---- sky
   const sunDir = sun ? dirVec(sun.alt, sun.az) : null;
@@ -286,25 +290,28 @@ function Scene({ grid, refH, ground, look, sun, earth, pose, onPose, jump }: Sce
   });
 
   const sunUp = !!sun && sun.alt > 0;
-  const lightPos = sunDir ? sunDir.clone().multiplyScalar(30000) : new THREE.Vector3(0, 0, 1);
+  // The shadow volume is ±11 km across (the area you can walk) but reaches 60 km toward the Sun, so crater
+  // rims up to 50 km away still cast their shadows here.
+  const lightPos = sunDir ? sunDir.clone().multiplyScalar(60000) : new THREE.Vector3(0, 0, 1);
   const sunR = SKY_M * Math.tan(0.27 * D) * 2.2, earthR = SKY_M * Math.tan(0.95 * D);
 
   return (
     <>
-      <ambientLight intensity={AMB_I * (look === "engraving" ? 4 : 1)} />
+      <ambientLight intensity={AMB_I} />
       <directionalLight position={lightPos} intensity={sunUp ? SUN_I : 0} castShadow
         shadow-mapSize={[4096, 4096]} shadow-camera-left={-11000} shadow-camera-right={11000}
-        shadow-camera-top={11000} shadow-camera-bottom={-11000} shadow-camera-near={1} shadow-camera-far={70000}
+        shadow-camera-top={11000} shadow-camera-bottom={-11000} shadow-camera-near={100} shadow-camera-far={75000}
         shadow-bias={-0.0004} shadow-normalBias={4} />
-      <mesh geometry={far} material={matFar} castShadow receiveShadow />
-      <mesh geometry={patch} material={mat} position={[center.e, center.n, 0]} castShadow receiveShadow />
+      <mesh geometry={far} material={photo} castShadow receiveShadow />
+      {ring && <mesh geometry={ring} material={photo} castShadow receiveShadow />}
+      <mesh geometry={patch} material={photo} position={[center.e, center.n, 0]} castShadow receiveShadow />
       <Lander z={ground(0, 0)} />
       <group ref={sky}>
-        {look === "photo" && <points geometry={stars}><pointsMaterial color="#cfd6e6" size={1.4} sizeAttenuation={false} /></points>}
+        <points geometry={stars}><pointsMaterial color="#cfd6e6" size={1.4} sizeAttenuation={false} /></points>
         {sunDir && (
           <mesh position={sunDir.clone().multiplyScalar(SKY_M)}>
             <sphereGeometry args={[sunR, 24, 16]} />
-            <meshBasicMaterial color={look === "photo" ? "#fff6d8" : "#e8a33d"} />
+            <meshBasicMaterial color="#fff6d8" />
           </mesh>
         )}
         {earthDir && (

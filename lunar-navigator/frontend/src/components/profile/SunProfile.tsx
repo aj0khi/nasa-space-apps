@@ -25,7 +25,7 @@ import {
   groundAt, hoursInView, inSlice, nearestIndex, nearestOnGrid, normAz, shadeSlice, sightHit, skyEvents, skylineDistAt, snap16,
   stateNumber, timeIndex, wholeDeg,
 } from "./profileMath";
-import type { Body, BodyView, SkyEvent } from "./profileMath";
+import type { Body, BodyView, SkyEvent, Slice } from "./profileMath";
 import SkylineStrip from "./SkylineStrip";
 import SliceMiniMap from "./SliceMiniMap";
 
@@ -167,6 +167,28 @@ const scaleName = (e: number) => (e === 1 ? "1:1" : `×${e}`);
 interface Lock { site: string; az: number; auto: boolean } // auto = chosen by the panel when the site opened
 interface Viewed { on: string; timeMs: number; rising: boolean } // the sunrise or sunset the slice was lined up with
 
+/** Smooth follow (trial): glide from the ground on screen to the next slice instead of swapping it. */
+function useMorph(target: Slice | null, on: boolean, ms = 140): Slice | null {
+  const [shown, setShown] = useState<Slice | null>(target);
+  const cur = useRef<Slice | null>(target);
+  useEffect(() => {
+    const a = cur.current;
+    if (!on || !target || !a || a.x.length !== target.x.length) { cur.current = target; setShown(target); return; }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, Math.max(0, (t - t0) / ms));
+      const next: Slice = k >= 1 ? target : { x: target.x.map((x, i) => a.x[i] + (x - a.x[i]) * k), z: target.z.map((z, i) => a.z[i] + (z - a.z[i]) * k) };
+      cur.current = next;
+      setShown(next);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, on, ms]);
+  return on ? shown ?? target : target;
+}
+
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const gradientId = useId();
@@ -179,6 +201,8 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   const [lock, setLock] = useState<Lock | null>(null); // direction the slice is locked to
   const [follow, setFollow] = useState(false); // optional: the slice turns with the body, in 16 steps
+  const [smooth, setSmooth] = useState(false); // trial: follow in 1° steps and glide between slices
+  const turning = follow && smooth;
   const [mirror, setMirror] = useState(false); // draw the slice the other way round (A on the left)
   const [lengthKm, setLengthKm] = useState(8);
   const [exagPick, setExagPick] = useState<{ on: string; value: number } | null>(null); // the user's height scale, for one site and reach
@@ -212,7 +236,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     // the direction is read once, when the positions for a new site arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, !now, lock?.site]);
-  const bearing = follow ? (now ? snap16(targetAz) : null) : lockAz;
+  const bearing = follow ? (now ? (smooth ? wholeDeg(targetAz) : snap16(targetAz)) : null) : lockAz;
   const lockTo = (az: number) => {
     setFollow(false);
     setViewed(null);
@@ -229,7 +253,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   // Measured ground along the slice. The previous slice stays on screen until the next one arrives.
   const section = useApi(() => (loc && bearing != null ? loadSection(loc, bearing, lengthKm).then((d) => ({ d, site: key })) : null),
-    [key, bearing, lengthKm], 120);
+    [key, bearing, lengthKm], turning ? 0 : 120);
   const sec = section.data && section.data.site === key ? section.data.d : null; // never another site's ground
   const shown = sec ? sec.azimuth : bearing ?? 0; // direction of the slice on screen
   const shownKm = sec ? sec.length_km : lengthKm;
@@ -260,7 +284,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const startState = useRef(0);
   startState.current = bearing != null ? stateNumber(bearing) - 1 : 0;
   useEffect(() => {
-    if (!loc || !follow) return;
+    if (!loc || !follow || smooth) return;
     let stop = false;
     (async () => {
       for (let s = 0; s < STATES && !stop; s++) {
@@ -269,9 +293,16 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     })();
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, follow, lengthKm]);
+  }, [key, follow, smooth, lengthKm]);
+  // Smooth follow: read the slices a few degrees either side ahead of time, so the ground never waits.
+  useEffect(() => {
+    if (!loc || !turning || bearing == null) return;
+    for (const d of [-1, 1, -2, 2, -3, 3]) loadSection(loc, normAz(bearing + d), lengthKm).catch(() => { /* read again when shown */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, turning, bearing, lengthKm]);
 
-  const slice = useMemo(() => (sec ? fromSection(sec) : null), [sec]);
+  const sliceTarget = useMemo(() => (sec ? fromSection(sec) : null), [sec]);
+  const slice = useMorph(sliceTarget, turning);
   const radius = sec?.curvature ? R_MOON_M : Infinity;
 
   // Where the body is relative to the slice. In the page = within 11.25° of the slice line, at either end.
@@ -280,6 +311,25 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const off = place ? place.off : 0;
   const tanEl = targetAlt != null ? Math.tan(targetAlt * D2R) : 0; // the TRUE elevation. Nothing on the drawing uses a projected angle.
   const toA = place ? place.sunRight : true; // the body is toward the A end
+
+  /** Put the body on the right or the left of the drawing: flip the view if it is in the page, else turn the slice to it. */
+  const aim = (right: boolean) => {
+    if (!now) return;
+    if (follow || inPage) { setMirror(toA ? !right : right); return; }
+    lockTo(wholeDeg(targetAz));
+    setMirror(!right);
+  };
+  /** Turn the slice to the body and keep it on the side where its hollow marker is. */
+  const reAim = () => {
+    if (!now) return;
+    const right = toA ? !mirror : mirror;
+    lockTo(wholeDeg(targetAz));
+    setMirror(!right);
+  };
+  const toggleFollow = (sm: boolean) => {
+    if (follow && smooth === sm && bearing != null) { lockTo(bearing); return; }
+    setSmooth(sm); setFollow(true); setViewed(null);
+  };
 
   // In the page only: shadows cast by ground on this slice, with the body's true elevation.
   const shadeNow = useMemo(() => (slice && inPage ? shadeSlice(slice, tanEl, toA, radius) : null), [slice, inPage, tanEl, toA, radius]);
@@ -322,7 +372,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   };
 
   // ---- ray-traced light for every ground point of the slice on screen ----
-  const want: LightWant | null = loc && sec ? { site: key, loc, azimuth: sec.azimuth, lengthKm: sec.length_km, start: baseTime.toISOString(), observerM } : null;
+  const want: LightWant | null = loc && sec && !turning ? { site: key, loc, azimuth: sec.azimuth, lengthKm: sec.length_km, start: baseTime.toISOString(), observerM } : null;
   const lightGot = useSliceLight(want, !stale);
   const lightData = lightGot.data;
   const lightMs = useMemo(() => (lightData ? lightData.times.map((t) => Date.parse(t)) : null), [lightData]);
@@ -550,6 +600,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   // What the slice is doing, in one line.
   const eventLocked = !!viewedEv && !follow && lockAz === wholeDeg(viewedEv.az);
   const stateText = bearing == null && !sec ? null
+    : turning ? { b: `Following ${view.the} smoothly`, rest: `: the slice turns with it, ${letter} points to ${fmtAz(shown)} (${compass(shown)})` }
     : follow ? { b: `Following ${view.the}: slice ${stateNumber(shown)} of ${STATES}`, rest: `, ${letter} points to ${fmtAz(shown)} (${compass(shown)})` }
     : { b: `Slice locked toward ${fmtAz(shown)} (${compass(shown)})`,
       rest: eventLocked ? `, where ${view.the} ${viewedEv!.rising ? "rises" : "sets"}` : lock?.auto ? `, where ${view.the} was when the site opened` : "" };
@@ -646,10 +697,12 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       <div className="viewpoints profile-dir">
         <span className="muted small">Slice direction</span>
         <div className="tabs" role="group" aria-label="Which way the slice points">
-          <button disabled={!now} onClick={() => now && lockTo(wholeDeg(targetAz))}>Lock to {view.the} now</button>
-          <button className={follow ? "active" : ""} aria-pressed={follow} disabled={!now}
-            onClick={() => { if (follow && bearing != null) lockTo(bearing); else { setFollow(true); setViewed(null); } }}>Follow {view.the}</button>
-          <button className={mirror ? "active" : ""} aria-pressed={mirror} onClick={() => setMirror(!mirror)}>Mirror the view</button>
+          <button disabled={!now} onClick={() => aim(false)} title={`Turn the slice to ${view.the} and draw it on the left`}>{view.name} on the left</button>
+          <button disabled={!now} onClick={() => aim(true)} title={`Turn the slice to ${view.the} and draw it on the right`}>{view.name} on the right</button>
+          <button className={follow && !smooth ? "active" : ""} aria-pressed={follow && !smooth} disabled={!now} onClick={() => toggleFollow(false)}
+            title="The slice jumps to the nearest of 16 fixed directions as the body moves">Follow in 16 steps</button>
+          <button className={turning ? "active" : ""} aria-pressed={turning} disabled={!now} onClick={() => toggleFollow(true)}
+            title="Trial: the slice turns with the body one degree at a time and the ground glides between slices">Smooth follow (trial)</button>
         </div>
         <span className="muted small">{body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}</span>
         <div className="tabs" role="group" aria-label={body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}>
@@ -747,6 +800,17 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
             {/* two fixed lines: the body's real angle, and what the sight line does */}
             <text x={W / 2} y={22} textAnchor="middle" fontSize={15} fill="var(--text)" className="profile-halo">{angleText}</text>
             <text x={W / 2} y={42} textAnchor="middle" fontSize={12.5} fill="var(--muted)" className="profile-halo">{lineText}</text>
+            {!inPage && now && draw.markers.length > 0 && (() => {
+              const m = draw.markers.reduce((a, b) => (b.w > a.w ? b : a));
+              const bw = 210, bx = Math.min(W - bw - 34, Math.max(34, m.x - bw / 2)), by = Math.min(H - 36, m.y + 22);
+              return (
+                <g className="profile-reaim" role="button" tabIndex={0} aria-label={`Turn the slice to ${view.the}`} onClick={reAim}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); reAim(); } }}>
+                  <rect x={bx} y={by} width={bw} height={26} rx={4} fill="var(--panel)" stroke={view.color} strokeWidth={1.4} />
+                  <text x={bx + bw / 2} y={by + 17.5} textAnchor="middle" fontSize={13} fill="var(--text)">Turn the slice to {view.the}</text>
+                </g>
+              );
+            })()}
             {/* slice ends, A and A′: A is the end the slice direction points to */}
             {[endB, endA].map((e) => {
               const x = e.right ? W - 1.5 : 1.5;
@@ -783,36 +847,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <span>
           {hoursStrip
             ? <>{view.total} over this lunar day, ray traced at every point: up to {maxH.toFixed(0)} h of {lightTotalH.toFixed(0)} h ({lightTotalH ? Math.min(100, Math.round((100 * maxH) / lightTotalH)) : 0}%) · stronger colour = more</>
-            : <>{view.total} per ground point over this lunar day: {manualSun ? "not shown for a manual Sun position" : lightWait ? "ray tracing the ground…" : "needs the ray-traced data"}</>}
+            : <>{view.total} per ground point over this lunar day: {manualSun ? "not shown for a manual Sun position" : turning ? "not shown while the slice turns; lock the slice to see it" : lightWait ? "ray tracing the ground…" : "needs the ray-traced data"}</>}
         </span>
         <span>+{shownKm} km · {compass(rightAz)} · <b>{mirror ? `${letter}′` : letter}</b></span>
       </div>
-
-      {/* the eye height goes in through a spread, so it reaches the strip whether or not the strip declares it */}
-      <SkylineStrip {...{ observerM }} skyline={skyline} series={pts} index={idx} body={body} sliceAzimuth={shown} letter={letter}
-        onPickAzimuth={lockTo}
-        onPickTime={(i) => pts[i] && setTime(new Date(pts[i].time))} />
-
-      <div className="profile-hint">
-        {hint && (
-          <>
-            <span>{hint.text}</span>
-            {hint.widen && <button onClick={() => pickLength(hint.widen!)}>Widen the slice to {hint.widen} km each way</button>}
-            {hint.look && <button onClick={() => lockTo(wholeDeg(targetAz))}>Lock to {view.the} now</button>}
-          </>
-        )}
-      </div>
-
-      <div className="profile-legend">
-        <span><i className="line sun" style={{ background: view.color }} />{view.lit}</span>
-        <span><i className="line shade" style={body === "earth" ? { background: "var(--red)" } : undefined} />{view.dark}</span>
-        <span><i className="swatch air" />{view.air}, from ground on this slice</span>
-        <span><i className="line sight" />Sight line from the lander to {view.the}</span>
-        <span><i className="ring" style={{ color: view.color }} />{view.name} off this slice</span>
-        <span><i className="line tick" />Skyline in {view.the === "Earth" ? "Earth's" : "the Sun's"} true direction (ray traced)</span>
-        <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}; printed angles are real`}{sec?.curvature ? " · Moon's curve included" : ""}</span>
-      </div>
-      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote}</p>
 
       <div className="profile-stats">
         <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
@@ -851,6 +889,33 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         </div>
         )}
       </div>
+
+      {/* the eye height goes in through a spread, so it reaches the strip whether or not the strip declares it */}
+      <SkylineStrip {...{ observerM }} skyline={skyline} series={pts} index={idx} body={body} sliceAzimuth={shown} letter={letter}
+        onPickAzimuth={lockTo}
+        onPickTime={(i) => pts[i] && setTime(new Date(pts[i].time))} />
+
+      <div className="profile-hint">
+        {hint && (
+          <>
+            <span>{hint.text}</span>
+            {hint.widen && <button onClick={() => pickLength(hint.widen!)}>Widen the slice to {hint.widen} km each way</button>}
+            {hint.look && <button onClick={() => lockTo(wholeDeg(targetAz))}>Lock to {view.the} now</button>}
+          </>
+        )}
+      </div>
+
+      <div className="profile-legend">
+        <span><i className="line sun" style={{ background: view.color }} />{view.lit}</span>
+        <span><i className="line shade" style={body === "earth" ? { background: "var(--red)" } : undefined} />{view.dark}</span>
+        <span><i className="swatch air" />{view.air}, from ground on this slice</span>
+        <span><i className="line sight" />Sight line from the lander to {view.the}</span>
+        <span><i className="ring" style={{ color: view.color }} />{view.name} off this slice</span>
+        <span><i className="line tick" />Skyline in {view.the === "Earth" ? "Earth's" : "the Sun's"} true direction (ray traced)</span>
+        <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}; printed angles are real`}{sec?.curvature ? " · Moon's curve included" : ""}</span>
+      </div>
+      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote}</p>
+
       {skyline && (
         <div className="profile-source">
           Answer for the lander: {skyline.synthetic ? "synthetic terrain model (no measured terrain was available)" : `rays traced in every direction through ${skyline.source}, out to ${skyline.reach_km.toFixed(0)} km or to the edge of the terrain data, from ${skyline.observer_m} m above the ground`}

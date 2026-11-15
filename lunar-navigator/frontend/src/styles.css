@@ -491,6 +491,10 @@ input[type="range"]:disabled { opacity: 0.45; }
 .profile .profile-legend { gap: 8px 18px; min-height: 52px; }
 .profile-note { min-height: 36px; margin: 0 0 12px; line-height: 1.5; max-width: 150ch; }
 .profile-stats { align-items: flex-start; }
+.profile .profile-stats { margin: 12px 0 14px; }
+.profile-reaim { cursor: pointer; }
+.profile-reaim:hover rect, .profile-reaim:focus-visible rect { fill: var(--line); }
+.profile-reaim:focus-visible { outline: none; }
 .profile-stats .stats { flex: 1 1 420px; }
 .profile-stats .stat { min-height: 112px; }
 .profile-stats .stats > .stat:first-child { grid-column: span 2; }

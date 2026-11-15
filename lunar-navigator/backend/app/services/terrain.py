@@ -4,22 +4,13 @@ Grid convention (all endpoints): row 0 = north edge, col 0 = west edge, site at 
 Azimuth is clockwise from north (east = +col, north = -row).
 
 The south-pole LOLA DEM is used when available; other locations use synthetic terrain.
-DEM source, in order: a file in data/dem/, the repo-root LDEM_80S_20MPP_ADJ.tiff, or (no download needed)
-NASA's copy read remotely in small windows. NASA's GeoTIFF is tiled (512×512) with overviews, so only the
-needed tiles are fetched. Set LOLA_REMOTE=0 to turn remote reading off, or LOLA_DEM_URL to use another copy.
 """
 from __future__ import annotations
 
-import os
-import threading
-import time
-from contextlib import contextmanager
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
 import rasterio
-from rasterio.errors import RasterioIOError
 from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 from scipy import ndimage
@@ -29,27 +20,6 @@ from app.services import polar_dem
 DEM_DIR = Path(__file__).resolve().parents[2] / "data" / "dem"
 LOCAL_DEM = Path(__file__).resolve().parents[4] / "LDEM_80S_20MPP_ADJ.tiff"
 MOON_RADIUS_M = 1_737_400.0
-
-REMOTE_DEM_URL = os.environ.get("LOLA_DEM_URL", "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF")
-REMOTE_ENABLED = os.environ.get("LOLA_REMOTE", "1") != "0"
-REMOTE_RETRY_S = 300  # after a network failure, use synthetic terrain for this long before trying NASA again
-# GDAL settings for fast windowed reads over HTTP (only used for the remote copy)
-for _k, _v in {
-    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
-    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".TIF,.tif,.tiff",
-    "VSI_CACHE": "TRUE",
-    "VSI_CACHE_SIZE": str(256 * 1024 * 1024),
-    "GDAL_CACHEMAX": "512",
-    "GDAL_HTTP_MULTIRANGE": "YES",
-    "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
-    "GDAL_HTTP_TIMEOUT": "30",
-    "GDAL_HTTP_MAX_RETRY": "3",
-}.items():
-    os.environ.setdefault(_k, _v)
-
-_remote_lock = threading.Lock()  # one GDAL dataset is not safe to share between threads
-_remote_open: dict[int | None, rasterio.io.DatasetReader] = {}
-_remote_down_until = 0.0
 
 
 # ---------------------------------------------------------------- elevation
@@ -80,66 +50,7 @@ def _dem_path() -> Path | None:
     return LOCAL_DEM if LOCAL_DEM.is_file() else None
 
 
-def _remote_target() -> str:
-    return "/vsicurl/" + REMOTE_DEM_URL
-
-
-def remote_available() -> bool:
-    return REMOTE_ENABLED and time.monotonic() >= _remote_down_until
-
-
-def mark_remote_down() -> None:
-    global _remote_down_until
-    _remote_down_until = time.monotonic() + REMOTE_RETRY_S
-
-
-def dem_source() -> tuple[str, tuple[str, int, int]] | None:
-    """(what to open, cache identity) for the DEM to use, or None for synthetic terrain."""
-    path = _dem_path()
-    if path is not None:
-        stat = path.stat()
-        return str(path), (str(path), stat.st_mtime_ns, stat.st_size)
-    if remote_available():
-        target = _remote_target()
-        return target, (target, 0, 0)
-    return None
-
-
-def is_remote(target: str) -> bool:
-    return target.startswith("/vsicurl/")
-
-
-@contextmanager
-def open_dem(target: str, overview_level: int | None = None):
-    """Open the DEM (optionally one of its lower-resolution overviews). Remote copies stay open between requests."""
-    opts = {} if overview_level is None else {"overview_level": overview_level}
-    if not is_remote(target):
-        with rasterio.open(target, **opts) as dem:
-            yield dem
-        return
-    with _remote_lock:
-        dem = _remote_open.get(overview_level)
-        if dem is None:
-            dem = rasterio.open(target, **opts)
-            _remote_open[overview_level] = dem
-        yield dem
-
-
-def overview_for(target: str, pixel_m: float) -> int | None:
-    """The coarsest overview that is still at least as sharp as `pixel_m` (None = full 20 m resolution)."""
-    with open_dem(target) as dem:
-        native = max(dem.res)
-        factors = dem.overviews(1)
-    levels = [i for i, f in enumerate(factors) if native * f <= pixel_m * 1.05]
-    return levels[-1] if levels else None
-
-
-@lru_cache(maxsize=64)
-def _read_dem_cached(identity: tuple[str, int, int], lat: float, lon: float, size_km: float, res: int) -> np.ndarray:
-    return _read_dem(identity[0], lat, lon, size_km, res)
-
-
-def _read_dem(path: Path | str, lat: float, lon: float, size_km: float, res: int) -> np.ndarray:
+def _read_dem(path: Path, lat: float, lon: float, size_km: float, res: int) -> np.ndarray:
     pixel_m = pixel_size_m(size_km, res)
     half_m = size_km * 500.0
     local_crs = (
@@ -147,8 +58,7 @@ def _read_dem(path: Path | str, lat: float, lon: float, size_km: float, res: int
         f"+R={MOON_RADIUS_M} +units=m +no_defs"
     )
     grid = np.full((res, res), np.nan, dtype=np.float32)
-    target = str(path)
-    with open_dem(target, overview_for(target, pixel_m)) as dem:
+    with rasterio.open(path) as dem:
         if dem.count != 1 or dem.crs is None:
             raise ValueError(f"DEM must have one elevation band and a lunar coordinate system: {path}")
         reproject(
@@ -169,15 +79,9 @@ def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) 
     """Return (elevation grid in metres, is_synthetic)."""
     if not (-90 <= lat <= 90 and -180 <= lon <= 180 and size_km > 0 and res >= 2):
         raise ValueError("Invalid terrain coordinates, size, or resolution.")
-    src = dem_source()
-    if src is not None and lat <= -80:
-        target, identity = src
-        try:
-            return _read_dem_cached(identity, round(lat, 6), round(lon, 6), float(size_km), int(res)).copy(), False
-        except (RasterioIOError, OSError):
-            if not is_remote(target):
-                raise
-            mark_remote_down()  # NASA unreachable: fall back to synthetic terrain for a while
+    dem = _dem_path()
+    if dem is not None and lat <= -80:
+        return _read_dem(dem, lat, lon, size_km, res), False
     if polar_dem.covered(lat):
         # sample the regional south-pole model so this tile matches the 2D map exactly
         half_m = size_km * 500.0

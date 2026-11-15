@@ -72,18 +72,13 @@ def _section(grid: np.ndarray, pixel_m: float, site_id: str, sun_az: float,
 
 
 def prepare_site(site: dict[str, Any]) -> dict[str, Any]:
-    src = terrain.dem_source()
-    if src is None:
+    path = terrain._dem_path()
+    if path is None:
         return {**site, "terrain_source": "synthetic"}
-    target, (ident, modified_ns, size) = src
     coords = site["coordinates"]
     lon = (float(coords["lon"]) + 180) % 360 - 180
-    try:
-        grid, horizon, pixel_m = _site_grid(float(coords["lat"]), lon, ident, modified_ns, size)
-    except ValueError:
-        if terrain.is_remote(target) and not terrain.remote_available():
-            return {**site, "terrain_source": "synthetic"}  # NASA unreachable right now
-        raise
+    stat = path.stat()
+    grid, horizon, pixel_m = _site_grid(float(coords["lat"]), lon, str(path), stat.st_mtime_ns, stat.st_size)
     center = (grid.shape[0] - 1) // 2
     return {
         **site,

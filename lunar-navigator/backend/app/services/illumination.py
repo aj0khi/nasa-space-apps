@@ -15,7 +15,6 @@ from functools import lru_cache
 
 import numpy as np
 import rasterio
-from rasterio.errors import RasterioIOError
 from rasterio.transform import from_origin
 from rasterio.warp import reproject, Resampling
 from scipy import ndimage
@@ -58,27 +57,26 @@ def _round_hour(when: datetime) -> str:
 
 
 def polar_illumination(when: datetime, min_lat: float = -80, res: int = 384) -> dict:
-    src = terrain.dem_source()
-    identity = src[1] if src else None
-    try:
-        return _polar_illumination(_round_hour(when), float(min_lat), int(res), identity)
-    except (RasterioIOError, OSError):
-        if identity is None or not terrain.is_remote(identity[0]):
-            raise
-        terrain.mark_remote_down()  # NASA unreachable: show the synthetic fallback for now
-        return _polar_illumination(_round_hour(when), float(min_lat), int(res), None)
+    path = terrain._dem_path()
+    if path:
+        stat = path.stat()
+        identity = (str(path), stat.st_mtime_ns, stat.st_size)
+    else:
+        identity = None
+    return _polar_illumination(_round_hour(when), float(min_lat), int(res), identity)
 
 
 @lru_cache(maxsize=6)
 def _lola_grid(half_km: float, res: int, identity: tuple[str, int, int]) -> np.ndarray:
     pixel_m = 2 * half_km * 1000 / (res - 1)
     grid = np.full((res, res), np.nan, dtype=np.float32)
-    with terrain.open_dem(identity[0]) as source:
+    with rasterio.open(identity[0]) as source:
         if source.count != 1 or source.crs is None:
             raise ValueError(f"DEM must have one elevation band and a lunar coordinate system: {identity[0]}")
         levels = source.overviews(1)
         candidates = [i for i, factor in enumerate(levels) if max(source.res) * factor <= pixel_m]
-    with terrain.open_dem(identity[0], candidates[-1] if candidates else None) as dem:
+    open_options = {"overview_level": candidates[-1]} if candidates else {}
+    with rasterio.open(identity[0], **open_options) as dem:
         target_crs = f"+proj=stere +lat_0=-90 +lon_0=0 +R={terrain.MOON_RADIUS_M} +units=m +no_defs"
         reproject(
             source=rasterio.band(dem, 1),

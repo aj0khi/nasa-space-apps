@@ -5,10 +5,16 @@
 
 ## South-pole DEM
 
-Download [LOLA LDEM_80S_20MPP_ADJ.TIF](https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF),
+**Automatic (default):** if no DEM is present, the backend downloads NASA's 80 m LOLA south-pole DEM
+(LDEM_80S_80M, 115 MB, from the PDS) in the background on startup, converts it to `dem/ldem_80s_80m.tif`,
+and uses it from then on (the Docker `dem` volume keeps it across deploys). Until it's ready, or if the
+download fails, terrain stays synthetic. Set `LUNAR_DEM_AUTO_DOWNLOAD=0` to turn this off.
+
+**Higher resolution (optional, 2.7 GB):** Download [LOLA LDEM_80S_20MPP_ADJ.TIF](https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF),
 covering 80°S to the pole. Put it in `dem/` (with a `.tif` or `.tiff` extension),
 or keep it at the repository root as `LDEM_80S_20MPP_ADJ.tiff`. The `dem/` file takes
-precedence; keep only one TIFF there. The file is local data and should not be committed.
+precedence; keep only one TIFF there (delete the auto-downloaded `ldem_80s_80m.tif` when adding the 20 m file).
+The file is local data and should not be committed.
 
 The local terrain elevation, cross-section, shadow and rim endpoints sample this DEM.
 They report `synthetic: false` when using it. Outside the DEM region, or when no DEM

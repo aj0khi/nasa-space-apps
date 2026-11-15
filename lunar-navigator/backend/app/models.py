@@ -120,6 +120,17 @@ class Mask(BaseModel):
     synthetic: bool
 
 
+class LitRelief(BaseModel):
+    """Sunlight on a terrain tile. `data` = base64 of res×res bytes, row 0 = north edge:
+    bit 7 set = sunlit, bits 0-6 = brightness (sunlit: how squarely the slope faces the Sun; shadow: dim hillshade)."""
+    res: int
+    pixel_m: float
+    data: str
+    lit_fraction: float
+    horizon_reach_km: float
+    synthetic: bool
+
+
 class CrossSectionLine(BaseModel):
     azimuth: float = 0
     length_km: float = 10

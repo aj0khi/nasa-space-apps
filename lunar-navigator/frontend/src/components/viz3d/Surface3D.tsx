@@ -9,7 +9,15 @@ import { renderGlobalMoonCanvas, renderSiteTrekCanvas, TrekLayerId } from "../..
 import { go } from "../../router";
 import { normLon, useApp } from "../../state/store";
 
-const VERT_EXAGGERATION = 3;
+// Height exaggeration: gentle ground is stretched (up to ×3) so its shape reads; rugged ground (real south-pole
+// relief is often 3+ km in a 20 km tile) is shown at true scale (×1) so it doesn't become a tower.
+const MAX_VERT_EXAGGERATION = 3;
+const TARGET_RELIEF_SHARE = 0.15; // aim for relief ≈ 15 % of the tile width
+function vertExaggeration(reliefKm: number, sizeKm: number) {
+  if (!(reliefKm > 0)) return MAX_VERT_EXAGGERATION;
+  const e = (TARGET_RELIEF_SHARE * sizeKm) / reliefKm;
+  return Math.round(Math.min(MAX_VERT_EXAGGERATION, Math.max(1, e)) * 2) / 2; // steps of 0.5
+}
 const SKY_KM = 16; // how far out the Sun and Earth markers are drawn (scene units are km)
 const HOME_TERRAIN: [number, number, number] = [0, -25, 18];
 const HOME_GLOBE: [number, number, number] = [0, -18, 12];
@@ -171,9 +179,12 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
     const g = new THREE.PlaneGeometry(size, size, n - 1, n - 1);
     const pos = g.attributes.position;
     const ref = grid[Math.floor(n / 2)][Math.floor(n / 2)];
-    for (let i = 0; i < pos.count; i++) pos.setZ(i, ((grid[Math.floor(i / n)][i % n] - ref) / 1000) * VERT_EXAGGERATION);
+    let zMin = Infinity, zMax = -Infinity;
+    for (const row of grid) for (const z of row) { if (z < zMin) zMin = z; if (z > zMax) zMax = z; }
+    const exag = vertExaggeration((zMax - zMin) / 1000, size);
+    for (let i = 0; i < pos.count; i++) pos.setZ(i, ((grid[Math.floor(i / n)][i % n] - ref) / 1000) * exag);
     g.computeVertexNormals();
-    return g;
+    return { g, exag };
   }, [elev.data, elev.error]);
 
   const [resetKey, setResetKey] = useState(0);
@@ -199,7 +210,7 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
     <div className="panel" style={{ height, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
         <h3 style={{ margin: 0 }}>
-          {viewMode === "terrain" ? `3D Site Terrain (height ×${VERT_EXAGGERATION})` : "3D Moon Globe (NASA Moon Trek LROC WAC)"}
+          {viewMode === "terrain" ? `3D Site Terrain (height ×${geom?.exag ?? MAX_VERT_EXAGGERATION})` : "3D Moon Globe (NASA Moon Trek LROC WAC)"}
         </h3>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <div className="tabs" role="group" aria-label="3D Mode">
@@ -245,7 +256,7 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
               shadow-mapSize={[2048, 2048]} shadow-camera-left={-15} shadow-camera-right={15}
               shadow-camera-top={15} shadow-camera-bottom={-15} />
             {geom && (
-              <mesh key={siteTex ? siteTex.uuid : "plain"} geometry={geom} castShadow receiveShadow>
+              <mesh key={siteTex ? siteTex.uuid : "plain"} geometry={geom.g} castShadow receiveShadow>
                 <meshStandardMaterial
                   map={siteTex ?? undefined}
                   color={siteTex ? "#ffffff" : "#9a9a9a"}

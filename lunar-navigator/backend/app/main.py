@@ -7,13 +7,22 @@
   /api/catalog → other notable landing sites (Apollo, Chang'e, CLPS…)
 """
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import ephemeris, evaluation, illumination, mission, score, sites, terrain
+from app.services import dem_fetch
 
-app = FastAPI(title="Lunar Landing Site Navigator API", version="0.3.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    dem_fetch.start_background_fetch()  # real LOLA terrain on first boot, if no DEM is present
+    yield
+
+
+app = FastAPI(title="Lunar Landing Site Navigator API", version="0.3.0", lifespan=lifespan)
 
 extra_origins = [origin.strip() for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 if "*" in extra_origins:

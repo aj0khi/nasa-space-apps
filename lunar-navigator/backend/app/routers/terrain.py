@@ -1,7 +1,9 @@
 """Owner: TERRAIN."""
+import base64
+
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import CrossSectionRequest, CrossSectionResponse, ElevationGrid, Mask, Profile
+from app.models import CrossSectionRequest, CrossSectionResponse, ElevationGrid, LitRelief, Mask, Profile
 from app.services import terrain
 
 router = APIRouter(prefix="/terrain", tags=["terrain"])
@@ -32,10 +34,21 @@ def shadow(lat: float, lon: float, sun_alt: float, sun_az: float, size_km: float
     return Mask(mask=m.tolist(), lit_fraction=float(m.mean()), synthetic=synthetic)
 
 
+@router.get("/lighting", response_model=LitRelief)
+def lighting(lat: float, lon: float, sun_alt: float, sun_az: float, size_km: float = Size, res: int = Query(256, ge=16, le=512)):
+    """Sunlit / shadowed ground with slope brightness, including shadows cast from up to 40 km outside the tile."""
+    try:
+        data, lit_fraction, synthetic, reach_km = terrain.lit_relief(lat, lon, sun_alt, sun_az, size_km, res)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return LitRelief(res=res, pixel_m=terrain.pixel_size_m(size_km, res), data=base64.b64encode(data.tobytes()).decode(),
+                     lit_fraction=lit_fraction, horizon_reach_km=reach_km, synthetic=synthetic)
+
+
 @router.get("/rims", response_model=Mask)
 def rims(lat: float, lon: float, size_km: float = Size, res: int = Res):
-    grid, _, synthetic = _grid(lat, lon, size_km, res)
-    return Mask(mask=terrain.rim_mask(grid).tolist(), synthetic=synthetic)
+    grid, px, synthetic = _grid(lat, lon, size_km, res)
+    return Mask(mask=terrain.rim_mask(grid, px).tolist(), synthetic=synthetic)
 
 
 @router.post("/cross-section", response_model=CrossSectionResponse)

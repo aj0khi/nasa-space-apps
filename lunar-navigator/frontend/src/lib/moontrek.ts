@@ -206,6 +206,8 @@ export async function renderSiteTrekCanvas(
   sizeKm = 20,
   layerId: Exclude<TrekLayerId, "none"> = "wac",
   canvasPx = 512,
+  /** Highest tile zoom to request (5 ≈ 270 m/px, 6 ≈ 134 m/px); still limited by the layer's own maxZoom. */
+  zoomCap = 5,
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = canvasPx;
@@ -223,7 +225,7 @@ export async function renderSiteTrekCanvas(
       distFromPole <= spec.coverageRadiusKm
         ? spec.productLabel
         : spec.fallbackProductLabel || TREK_SP_LAYERS.wac.productLabel;
-    const z = product === spec.productLabel ? Math.min(spec.maxZoom, 5) : 4;
+    const z = product === spec.productLabel ? Math.min(spec.maxZoom, zoomCap) : 4;
     const n = 1 << z;
     const spanKm = SP_FULL_SPAN_KM / n;
 

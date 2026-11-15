@@ -68,6 +68,10 @@ npm run dev                                   # http://localhost:5173 (proxies /
 
 The first ephemeris call downloads about 20 MB of JPL kernels into `backend/data/kernels/`.
 
+For frontend builds from the repository root, run `npm install` followed by
+`npm run build`. The root install uses the frontend lockfile and includes its
+build tools even when the install environment is set to production.
+
 ## Hostinger hosting
 
 [Hostinger supports Python on its self-managed VPS plans](https://www.hostinger.com/support/which-programming-languages-and-frameworks-are-supported-at-hostinger/).

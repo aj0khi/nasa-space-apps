@@ -2,6 +2,7 @@
   "name": "lunar-navigator-root",
   "private": true,
   "scripts": {
+    "postinstall": "npm --prefix lunar-navigator/frontend ci --include=dev",
     "dev": "npm --prefix lunar-navigator/frontend run dev",
     "build": "npm --prefix lunar-navigator/frontend run build"
   }

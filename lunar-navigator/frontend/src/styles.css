@@ -459,3 +459,22 @@ input[type="range"]:disabled { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) {
   .shell button { transition: none; }
 }
+
+/* Beginner: Moon phases as reference dates (Date panel) */
+.moonphases { margin-top: 12px; }
+.moonphases-label { display: block; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.moonphases-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.moonphases-row button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px 6px; min-width: 0; text-transform: none; letter-spacing: normal; }
+.moonphase-icon { font-size: 20px; line-height: 1; }
+.moonphase-name { font-size: 10px; line-height: 1.2; text-align: center; color: var(--text); }
+.moonphase-date { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.moonphases-row button.active { border-color: var(--accent); }
+.moonphases-row button.active .moonphase-date { color: var(--accent); }
+
+/* Expert: go to coordinates */
+.goto-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.goto-form label { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.goto-form input { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.goto-form input[aria-invalid="true"] { border-color: var(--red); }
+.goto-form button { padding: 7px 14px; }
+.goto-hint { margin: 6px 0 0; }

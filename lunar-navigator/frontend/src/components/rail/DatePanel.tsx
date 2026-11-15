@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { useApi } from "../../hooks/useApi";
 import { useApp } from "../../state/store";
-import { ExpertOnly } from "../learn/ModeGate";
+import { BeginnerOnly, ExpertOnly } from "../learn/ModeGate";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const LUNAR_DAY_H = 29.53 * 24;
@@ -62,6 +62,7 @@ export default function DatePanel() {
       </div>
       <button className="link" onClick={() => setBaseTime(new Date())}>Reset to now</button>
       <DatePresets />
+      <BeginnerOnly><MoonPhases /></BeginnerOnly>
       <ExpertOnly>
         <div className="ms-row">
           <label><span>Time (UTC)</span>
@@ -98,6 +99,48 @@ function DatePresets() {
         <button key={p.key} className={Math.abs(p.t.getTime() - baseTime.getTime()) < 3.6e6 ? "active" : ""}
           title={p.t.toUTCString()} onClick={() => setBaseTime(p.t)}>{p.label}</button>
       ))}
+    </div>
+  );
+}
+
+// Moon phases as easy reference dates for beginners (as seen from Earth). Mean phases from the average synodic
+// month, anchored on the new Moon of 6 Jan 2000 (Meeus): good to within about half a day, fine for picking a date.
+const SYNODIC_MS = 29.530588861 * 864e5;
+const NEW_MOON_2000 = Date.UTC(2000, 0, 6, 18, 14);
+const PHASES = [
+  { q: 0, name: "New Moon", icon: "🌑", hint: "Earth sees the Moon's dark side: the Sun is behind the Moon, over its far side." },
+  { q: 0.25, name: "First quarter", icon: "🌓", hint: "Half lit from Earth: the Sun is off to the Moon's east." },
+  { q: 0.5, name: "Full Moon", icon: "🌕", hint: "Fully lit from Earth: the Sun is behind Earth, over the Moon's Earth-facing side." },
+  { q: 0.75, name: "Last quarter", icon: "🌗", hint: "Half lit from Earth: the Sun is off to the Moon's west." },
+];
+
+/** The next time each phase happens after `from`, soonest first. */
+export function nextMoonPhases(from: number) {
+  const cycles = (from - NEW_MOON_2000) / SYNODIC_MS;
+  return PHASES.map((p) => {
+    const k = Math.floor(cycles - p.q) + 1; // first whole cycle whose phase-q moment is after `from`
+    return { ...p, t: new Date(NEW_MOON_2000 + (k + p.q) * SYNODIC_MS) };
+  }).sort((a, b) => a.t.getTime() - b.t.getTime());
+}
+
+function MoonPhases() {
+  const { baseTime, setBaseTime } = useApp();
+  const phases = nextMoonPhases(Date.now());
+  const fmt = (t: Date) => t.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  return (
+    <div className="moonphases">
+      <span className="moonphases-label">Next Moon phases</span>
+      <div className="moonphases-row" role="group" aria-label="Jump to a Moon phase">
+        {phases.map((p) => (
+          <button key={p.name} className={Math.abs(p.t.getTime() - baseTime.getTime()) < 12 * 3.6e6 ? "active" : ""}
+            title={`${p.name}, ${p.t.toUTCString().slice(5, 22)} UTC (approximate). ${p.hint}`}
+            aria-label={`${p.name}, ${fmt(p.t)}`} onClick={() => setBaseTime(p.t)}>
+            <span className="moonphase-icon" aria-hidden="true">{p.icon}</span>
+            <span className="moonphase-name">{p.name}</span>
+            <span className="moonphase-date">{fmt(p.t)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 // Computed values can be changed by hand (Expert). Owner: Visualization.
 //   Earth–Moon distance + Sun at the site: lunar-navigator/backend /api/ephemeris/state
 //   best A–H site on arrival day: A–H engine /api/sites
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../../api/client";
 import { useApi } from "../../hooks/useApi";
 import { fmtUtc, sixHourKey } from "../../hooks/useLatest";
@@ -119,27 +119,9 @@ export default function MissionSetup() {
       </dl>
 
       <ExpertOnly>
-        <LandingPoint />
         <SunOverride time={time} override={sunOverride} setOverride={setSunOverride} />
       </ExpertOnly>
     </section>
-  );
-}
-
-/** Type a latitude / longitude to land anywhere. */
-function LandingPoint() {
-  const loc = useApp((s) => s.location());
-  const [lat, setLat] = useState("");
-  const [lon, setLon] = useState("");
-  useEffect(() => { if (loc) { setLat(loc.lat.toFixed(3)); setLon(loc.lon.toFixed(3)); } }, [loc?.lat, loc?.lon]);
-  const la = Number(lat), lo = Number(lon);
-  const ok = lat !== "" && lon !== "" && Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180;
-  return (
-    <form className="ms-row" onSubmit={(e) => { e.preventDefault(); if (ok) go.point(la, lo); }}>
-      <label><span>Latitude</span><input inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} aria-label="Latitude, negative for south" /></label>
-      <label><span>Longitude</span><input inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} aria-label="Longitude, negative for west" /></label>
-      <button type="submit" disabled={!ok}>Go</button>
-    </form>
   );
 }
 

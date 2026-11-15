@@ -46,7 +46,7 @@ export default function HomeView() {
   return (
     <div className="ms">
       <header className="ms-header">
-        <a className="ms-brand" href="#/home"><Logo /> <span>SOUTHPOINT</span></a>
+        <a className="ms-brand" href="#/home" aria-label="SouthPoint home"><Logo height={44} /></a>
         <nav className="ms-nav" aria-label="Main">
           <a href="#guide" onClick={(e) => { e.preventDefault(); document.getElementById("guide")?.scrollIntoView({ behavior: "smooth" }); }}>Guide</a>
           <a href="#/2d">Navigator</a>
@@ -67,8 +67,8 @@ export default function HomeView() {
         </div>
 
         <div className="ms-title">
-          <h1>SOUTHPOINT</h1>
           <p className="ms-sub">Lunar landing site navigator</p>
+          <h1>SOUTHPOINT</h1>
           <p className="ms-tagline">Land where the sun stays.</p>
         </div>
 

@@ -38,7 +38,7 @@ export default function App() {
   const route = useRoute();
   useEffect(() => {
     const titles: Record<View, string> = { home: "Home", "2d": "Lunar map", section: "Cross section", "3d": "3D terrain", compare: "Compare" };
-    document.title = `${titles[route.view]} | Lunar Landing Site Navigator`;
+    document.title = `${titles[route.view]} | SouthPoint`;
   }, [route.view]);
   return route.view === "home" ? <HomeView /> : <Navigator route={route} />;
 }

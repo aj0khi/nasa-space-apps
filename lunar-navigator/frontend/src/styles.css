@@ -478,3 +478,13 @@ input[type="range"]:disabled { opacity: 0.45; }
 .goto-form input[aria-invalid="true"] { border-color: var(--red); }
 .goto-form button { padding: 7px 14px; }
 .goto-hint { margin: 6px 0 0; }
+
+/* Explore on foot: lander marker (subtle, constant size, always visible) */
+.site-beacon { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; color: rgba(236, 238, 232, 0.78); }
+.site-beacon > * { position: absolute; left: 0; top: 0; }
+.site-beacon .sb-glyph { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); translate: -50% -100%; animation: sb-hover 2.6s ease-in-out infinite; transform-origin: 50% 50%; }
+.site-beacon .sb-label { translate: -50% calc(-100% - 16px); white-space: nowrap; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.02em; padding: 2px 6px; background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(236, 238, 232, 0.18); }
+.site-beacon.edge .sb-glyph { translate: -50% -50%; animation: none; }
+.site-beacon.edge .sb-label { translate: -50% 12px; }
+@keyframes sb-hover { 0%, 100% { margin-top: 0; } 50% { margin-top: -3px; } }
+@media (prefers-reduced-motion: reduce) { .site-beacon .sb-glyph { animation: none; } }

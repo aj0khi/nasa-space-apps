@@ -1,27 +1,37 @@
-# Lunar Landing Site Navigator 🌙
+# SouthPoint: Lunar Landing Site Navigator 🌙
 
-NASA Space Apps Challenge — a web app that helps mission planners **and** non-experts pick a lunar landing
-site and date by showing where the **Sun and Earth** are from that spot, how **shadows** fall across craters
-and rims, and whether the site/date gives enough **power** (sunlight) and **communication** (Earth in view).
+NASA Space Apps Challenge — an interactive prototype for comparing lunar landing-site scenarios.
+SouthPoint shows modeled **Sun and Earth geometry**, terrain and illumination views, and heuristic
+screening indicators for sunlight, direct-to-Earth visibility, and slope. It is designed to make
+site-selection trade-offs understandable to both mission-planning teams and the public; it does not
+certify a site as safe or suitable for a specific CLPS or crewed mission.
 
-> The pitch in one line: *"Pick a spot on the Moon and a date. We show you if the lights stay on and if you can
-> phone home, and we explain why in plain language."*
+> The pitch in one line: *"Choose a lunar site and date, then explore how lighting, terrain, and
+> Earth visibility change—so teams can compare scenarios and understand the trade-offs."*
 
 ## The story we tell (demo flow)
 
 Start on the home page and select **Explore the lunar map**; existing links to
 specific maps and sites still open the navigator directly.
 
-1. **Pick a site.** Choose an A–H candidate, select a mission site from the catalog, or type your own coordinates.
-   Catalog locations are evaluated with the custom-point model; unverified entries are labeled.
+1. **Pick a site.** Choose an A–H scenario, select a site from the catalog, or type custom coordinates.
+   Catalog locations are evaluated with the custom-point model; unverified entries are labeled and
+   should not be treated as confirmed landing-site coordinates.
    Sites outside the south-pole 2D map can still be selected.
-2. **Pick a date.** Drag the **sun slider** to explore modeled lighting. The photographic map is a fixed mosaic, not live imagery.
-3. **Why rims?** Split view: the crater floor stays dark and holds ice, while the rim keeps sunlight. That's why we land on rims.
-4. **Can we operate?** The status badge turns green, yellow or red based on power and comms windows, with a countdown to sunset and Earthset.
+2. **Pick a date and time.** Use the date controls, seasonal shortcuts, and **sun slider** to explore modeled lighting.
+   The photographic map is a fixed mosaic, not live imagery.
+3. **Explore the lighting trade-off.** Some permanently shadowed regions may preserve volatiles, while
+   nearby elevated terrain may receive more sunlight. The visualization does not identify or confirm
+   water ice at a selected site.
+4. **Review the screening indicators.** The status badge summarizes heuristic sunlight, direct-to-Earth
+   visibility, and slope indicators, with countdowns to modeled sunset and Earthset.
    A–H countdowns use six-hour samples up to 15 days ahead; custom-point estimates use the
-   separate horizon model up to 30 days ahead. No event in that interval does not mean never.
-5. **Compare.** Put 2–3 sites side by side and see the trade‑offs.
-6. **Plan the trip.** Pick a vehicle type, departure date and arrival date, then export a mission plan JSON (what would be "uploaded to the craft").
+   separate horizon model up to 30 days ahead. These are finite forecast windows: no event in the
+   interval does not mean it will never occur.
+5. **Compare scenarios.** Put 2–3 site/date combinations side by side to inspect their trade-offs.
+6. **Explore a transit scenario.** Select a vehicle type and departure date to calculate an assumed
+   arrival and export a mission-plan JSON. This is a planning artifact, not a trajectory solution,
+   flight software, or command package to upload to a spacecraft.
 
 ## Architecture
 
@@ -35,13 +45,14 @@ frontend/  React + Vite + TypeScript
 backend/   Python FastAPI — ONE server for everything (also mounts the A–H engine from /backend)
   ├─ services/ephemeris.py  Skyfield + JPL DE421 + lunar frame → Sun/Earth alt/az, windows
   ├─ services/terrain.py    LOLA DEM → elevation, cross sections, shadow/illumination maps
-  ├─ services/scoring.py    power + comms + terrain → viability score + status
-  └─ services/mission.py    vehicle, dates, journey → exportable mission plan
+  ├─ services/scoring.py    sunlight + Earth visibility + slope → heuristic score and status
+  └─ services/mission.py    assumed transit time + dates → illustrative mission plan
 ```
 
-The rail (A–H GO / NO-GO, windows, resources, cautions) and the Compare tab come from the team's
-evaluation engine in `/backend` (see `/system_arch.md`); `app/routers/evaluation.py` mounts it in this server,
-so the frontend talks to a single API. `python backend/main.py` still runs that engine on its own.
+The A–H screening rail and Compare tab use the team's evaluation engine in `/backend`
+(see `/system_arch.md`); `app/routers/evaluation.py` mounts it in this server, so the frontend talks
+to a single API. `python backend/main.py` still runs that engine on its own. Green/yellow/red
+statuses are prototype screening labels, not mission approval or NASA/CLPS go/no-go decisions.
 
 The local terrain API and A–H evaluations on the main server read the same LOLA DEM
 when installed; otherwise they report synthetic terrain. The 2D map offers
@@ -60,6 +71,46 @@ The topographic view switches between a
 contour map and its A–A′ profile instead of displaying them together. Scores, shadows and windows are exploratory,
 not validated landing guidance.
 See [backend/data/README.md](backend/data/README.md) for DEM setup and limitations.
+
+## Scope and scientific limitations
+
+SouthPoint is a **scenario exploration and comparison prototype**, not an operational landing-site
+selection system. Its outputs depend on the selected time, site, ephemeris, terrain coverage, and
+model assumptions.
+
+- **Site score:** The current composite weights power at 45%, direct-to-Earth visibility at 35%, and
+  terrain at 20%. The weights and status cutoffs are heuristic prototype choices, not published
+  CLPS requirements. The terrain score uses a site-center slope statistic; it does not evaluate a
+  landing ellipse, boulder hazards, or vehicle-specific landing limits.
+- **Lighting and power:** Sun position and modeled visibility windows support comparisons across
+  selected dates, with seasonal shortcuts. The power indicator is a proxy based on sunlight fraction
+  and mean Sun elevation. It does not calculate solar-array output, panel orientation, battery state,
+  electrical loads, or power available through a dark period.
+- **Thermal environment:** The explainer includes general lunar temperature context, but the app
+  does not predict surface or equipment temperatures at a selected site and time. It does not model
+  lander thermal control, battery operating limits, heaters, or survival through lunar night. Ambient
+  temperature facts should not be interpreted as equipment performance.
+- **Communications:** The app estimates direct Earth line of sight and its terrain horizon where
+  supported. It does not model a relay satellite, radio link budget, bandwidth, signal delay, command
+  scheduling, or onboard autonomy. A warning about lost Earth visibility does not mean a relay is
+  available or that a mission can safely operate autonomously.
+- **Terrain and catalog:** Real terrain-dependent shadows and horizon checks require suitable LOLA DEM
+  coverage. Without it, some views use labeled synthetic terrain and Earth-horizon calculations may
+  use a flat horizon. Catalog entries marked unverified are not authoritative coordinates or evidence
+  that a site is an approved CLPS destination.
+- **Mission plan:** Vehicle transit durations are fixed illustrative assumptions. The exported JSON
+  is not a validated trajectory, engineering analysis, or spacecraft command sequence.
+
+Use the results to explain and compare trade-offs, not to select a real mission site without
+independent engineering review and mission-specific requirements. For the team's science notes and
+data sources, see [docs/SCIENCE.md](docs/SCIENCE.md).
+
+### Background references
+
+- [NASA Lunar Landing and Operations Policy Analysis](https://ntrs.nasa.gov/citations/20220015973)
+- [NASA: The Lunar South Pole Region](https://www.nasa.gov/reference/moonbase-environment/)
+- [NASA technical paper: Surviving Night at the Lunar South Pole](https://ntrs.nasa.gov/citations/20230008341)
+- [NASA technical paper: Lunar Surface Communications Architecture](https://ntrs.nasa.gov/citations/20240008640)
 
 ## Quick start
 

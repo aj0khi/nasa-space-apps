@@ -293,3 +293,32 @@ input[type="range"]:disabled { opacity: 0.45; }
 .profile-legend .line.sight { height: 0; border-top: 2px dashed var(--text); border-radius: 0; background: none; }
 .profile-halo { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
 
+/* Locked slice, event view, steady frame (LEAD, panel). Every line that comes and goes has its space reserved. */
+.profile-dir button:disabled { opacity: 0.45; cursor: default; }
+.profile-dir .profile-next { border-color: var(--sun); min-width: 124px; }
+.profile .profile-state { min-height: 20px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+.profile .profile-state span { overflow: hidden; text-overflow: ellipsis; }
+.profile .profile-state .profile-state-main { flex: none; }
+.profile-event { display: flex; align-items: center; gap: 4px 12px; height: 30px; margin: 0 0 6px; font-size: 13px; line-height: 1.4; }
+.profile-event span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-event button { flex: none; white-space: nowrap; padding: 3px 10px; font-size: 13px; border-color: var(--sun); }
+@media (max-width: 960px) {
+  .profile-event { height: auto; min-height: 30px; flex-wrap: wrap; }
+  .profile-event span { white-space: normal; }
+  .profile .profile-state { flex-wrap: wrap; white-space: normal; }
+}
+.profile-frame { aspect-ratio: 1000 / 400; }
+.profile-frame .profile-loading { height: 100%; }
+.profile-sight { animation: profile-in 0.2s ease-out; }
+@keyframes profile-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .profile-sight { animation: none; } }
+.profile .profile-hint { min-height: 48px; align-content: center; }
+.profile-legend .ring { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 2px dashed currentColor; margin-right: 8px; }
+.profile-legend .line.tick { width: 22px; height: 2px; background: var(--text); border-radius: 0; }
+.profile .profile-legend { gap: 8px 18px; min-height: 52px; }
+.profile-note { min-height: 36px; margin: 0 0 12px; line-height: 1.5; max-width: 150ch; }
+.profile-stats .stat { min-height: 152px; }
+.profile-stats .stats > .stat:first-child { grid-column: span 2; }
+@media (max-width: 760px) { .profile-stats .stats > .stat:first-child { grid-column: auto; } }
+/* The legend keeps three lines of room, so the line about the height scale never pushes the panel down. */
+.profile .profile-legend { min-height: 70px; align-content: flex-start; }

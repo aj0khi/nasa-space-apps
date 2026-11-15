@@ -149,6 +149,38 @@ through the site, `length_km` (0.5–150) toward `azimuth` and the same distance
 `x_m` is negative behind the site and positive toward `azimuth`. `z_m` is height above the lander's ground point
 with curvature included, so a straight ray of light is a straight line when `x_m` and `z_m` share a scale.
 
+`GET /api/terrain/slice-light?lat=&lon=&azimuth=&length_km=&start=&days=29.53&step_min=60&observer_m=2&points=201`
+→ `SliceLight`: for every ground point along a slice and every time step, is the centre of the Sun (and of the
+Earth) above that point's own ray-traced skyline, seen from `observer_m` above the ground there? This is what
+makes the ground colours along a locked slice true: shadows on the line are mostly cast by terrain off the line.
+```json
+{ "azimuth": 186.0, "length_km": 8.0, "observer_m": 2.0, "x_m": [ N ], "times": [ T ISO strings ],
+  "sun": [ T strings of N characters, "1" = in view ], "earth": [ ... ],
+  "sun_hours": [ N ], "earth_hours": [ N ], "synthetic": false, "source": "…", "note": null }
+```
+`times` is the same grid as `/api/ephemeris/windows` for the same `start`, `days` and `step_min`; `x_m` follows the
+same convention as `Section.x_m` (a different, evenly spaced grid: interpolate by x). Measured on the real DEM:
+about 4 to 5 s for a new slice of 8 or 30 km reach from a local file, 300 kB for 201 points and 709 hourly steps.
+At the lander it gives the same answer as `/terrain/skyline` at all 709 steps (two sites); at points 12 to 27 km
+from the lander it agrees with a full-accuracy skyline computed at that point at 99.9 to 100 % of steps, differing
+only when the body is within 0.01° of the skyline. With no real terrain it answers 422 with the reason; it never
+returns made-up light.
+
+`GET /api/terrain/shadow-map?lat=&lon=&size_km=16&res=96&observer_m=2` → `ShadowMap`: a square map `size_km`
+across (2 to 320), centred on the site, `res` x `res` pixels (32 to 160), in the lander's flat frame: up is local
+north at the site, row 0 is the north edge, column 0 the west edge. It gives `elevation_m` per pixel and, per pixel
+and every 5° of azimuth, the altitude in the lander's level frame that a body at that azimuth must exceed to be
+seen from `observer_m` above that pixel, packed as one byte (angle = value * 0.25 - 16), pixel-major then azimuth,
+base64. A pixel is lit when the body's altitude at the lander is greater than its horizon at the body's azimuth,
+interpolated between the two neighbouring steps. Measured at Faustini rim (16 km map): the centre pixel differs
+from `/terrain/skyline` by 0.06° on average and 0.15° at worst as delivered (0.012° and 0.075° before the 0.25°
+rounding), and lit or shaded matched a direct ray march in 360 of 360 pixel and Sun cases. Cost: about 0.95 MB of
+JSON; the first request took 27 s on a busy 2-core machine, repeats come from the disk cache in milliseconds. Maps
+wider than about 80 km use coarser near data and say so in `note`. Without real terrain it answers 422.
+
+`GET /api/terrain/skyline` also takes `observer_m` (0.5 to 30, default 2): the height of the solar panel or antenna
+above the ground. On crests this changes the answer more than anything else.
+
 The first request for a site takes about 2 s from a local DEM and roughly 10 to 25 s when the DEM is read remotely.
 Results are cached in `backend/data/cache/` (not committed); the cache file names include a tag that changes
 with the code and settings. Set `LOLA_REMOTE=0` to forbid network reads. If the terrain cannot be read at all,

@@ -1,0 +1,78 @@
+/* Top-down mini-map in the cross-section panel. Owner: LEAD. All classes start with "minimap". */
+
+/* A fixed box: the same size while loading, loaded and failed, so the panel never jumps. */
+.minimap {
+  margin: 0;
+  flex: 0 0 auto;
+  width: 288px;
+  max-width: 100%;
+  color: var(--muted);
+}
+
+.minimap-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  /* shows through where the terrain data ends */
+  background: repeating-linear-gradient(45deg, var(--panel) 0 6px, var(--panel-2, var(--panel)) 6px 12px);
+  user-select: none;
+}
+
+.minimap-pick { cursor: crosshair; }
+
+.minimap-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* text and lines must read on sunlit and on shaded ground alike */
+.minimap-text {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: rgba(8, 10, 16, 0.85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.minimap-end { font-size: 13px; }
+.minimap-halo { stroke: rgba(8, 10, 16, 0.8); stroke-linecap: round; stroke-linejoin: round; }
+.minimap-halo-fill { fill: rgba(8, 10, 16, 0.8); }
+.minimap-outline { stroke: rgba(8, 10, 16, 0.85); stroke-width: 1.5px; paint-order: stroke; stroke-linejoin: round; }
+
+.minimap-status,
+.minimap-readout {
+  position: absolute;
+  font-size: 12px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.minimap-status { left: 10px; right: 10px; bottom: 8px; text-align: center; color: var(--muted); }
+.minimap-readout {
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(8, 10, 16, 0.82);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The caption keeps one height in every state; a long note scrolls inside it. */
+.minimap-caption {
+  margin-top: 6px;
+  height: 132px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.38;
+  text-align: left;
+  color: var(--muted);
+}
+.minimap-expert .minimap-caption { height: 198px; }
+.minimap-extra { color: var(--muted); opacity: 0.85; }

@@ -294,3 +294,117 @@ export function autoExag(reliefM: number, pxPerM: number, wantPx = 120): number 
   for (const e of EXAG_STEPS) if (reliefM * pxPerM * e >= wantPx) return e;
   return EXAG_STEPS[EXAG_STEPS.length - 1];
 }
+
+// ---------- Locked slice, events, true ground light. Owner: LEAD (panel). Additive: everything above is unchanged. ----------
+//
+// The slice no longer turns with the Sun by default: it is locked to one direction. A body is "in the page" when its
+// azimuth is within PAGE_HALF_DEG of the slice line (either end). Only then is a sight line or a slice shadow drawn,
+// and then at the body's TRUE elevation. Off the page nothing is projected: the marker sits at the true elevation.
+
+/** A body this close (deg) to the slice line, at either end, is drawn in the slice. */
+export const PAGE_HALF_DEG = STATE_STEP / 2;
+
+/** Azimuth folded into 0 ≤ az < 360. */
+export const normAz = (az: number) => norm360(az);
+
+/** Nearest whole degree, 0…359. */
+export const wholeDeg = (az: number) => Math.round(norm360(az)) % 360;
+
+/** Signed difference a − b, in −180 < d ≤ 180. */
+export function azDiff(a: number, b: number): number {
+  const d = norm360(a - b);
+  return d > 180 ? d - 360 : d;
+}
+
+/** Azimuth a fraction f of the way from a to b, going the short way round. */
+export function azLerp(a: number, b: number, f: number): number {
+  return norm360(a + azDiff(b, a) * f);
+}
+
+/** A moment when the centre of the disc crosses the ray-traced skyline. */
+export interface SkyEvent {
+  i: number; // the sample of the series just before the crossing
+  timeMs: number; // when (linear between the two hourly samples)
+  rising: boolean;
+  az: number; // the body's azimuth at that moment (deg)
+  alt: number; // its altitude at that moment (deg) = the skyline height there
+  blockerKm: number | null; // how far away the terrain it crosses is
+}
+
+/** Every rise and set in the series, in time order. Same rule as `nextCrossing`. */
+export function skyEvents(series: SeriesPoint[], sky: { elev_deg: number[]; dist_km: (number | null)[] }, body: Body): SkyEvent[] {
+  const out: SkyEvent[] = [];
+  if (series.length < 2 || !sky.elev_deg.length) return out;
+  const alt = (p: SeriesPoint) => (body === "sun" ? p.sun_alt : p.earth_alt);
+  const azi = (p: SeriesPoint) => (body === "sun" ? p.sun_az : p.earth_az);
+  let prev = alt(series[0]) - skylineAt(sky.elev_deg, azi(series[0]));
+  for (let j = 1; j < series.length; j++) {
+    const a = series[j - 1], b = series[j];
+    const cur = alt(b) - skylineAt(sky.elev_deg, azi(b));
+    if (cur > 0 !== prev > 0) {
+      const f = prev === cur ? 0 : prev / (prev - cur);
+      const ta = Date.parse(a.time), tb = Date.parse(b.time);
+      const az = azLerp(azi(a), azi(b), f);
+      out.push({ i: j - 1, timeMs: ta + f * (tb - ta), rising: cur > 0, az, alt: alt(a) + f * (alt(b) - alt(a)), blockerKm: skylineDistAt(sky.dist_km, az) });
+    }
+    prev = cur;
+  }
+  return out;
+}
+
+/** Hours in the series with the centre of the disc above the skyline. Each sample stands for the interval up to the next. */
+export function hoursInView(series: SeriesPoint[], elev: number[], body: Body): number {
+  let h = 0;
+  for (let j = 0; j + 1 < series.length; j++) {
+    const p = series[j];
+    const m = body === "sun" ? p.sun_alt - skylineAt(elev, p.sun_az) : p.earth_alt - skylineAt(elev, p.earth_az);
+    if (m > 0) h += (Date.parse(series[j + 1].time) - Date.parse(p.time)) / 3.6e6;
+  }
+  return h;
+}
+
+/** Index of the entry of `timesMs` (ascending) nearest to `tMs`, or −1 when none is within `tolMs`. Matches by time, not by position. */
+export function timeIndex(timesMs: number[], tMs: number, tolMs: number): number {
+  const n = timesMs.length;
+  if (!n) return -1;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (timesMs[mid] <= tMs) lo = mid; else hi = mid;
+  }
+  const best = Math.abs(timesMs[hi] - tMs) < Math.abs(timesMs[lo] - tMs) ? hi : lo;
+  return Math.abs(timesMs[best] - tMs) <= tolMs ? best : -1;
+}
+
+/** For each x of `xs`: index of the nearest entry of `grid` (ascending), or −1 when x lies more than one grid step outside it. */
+export function nearestOnGrid(grid: number[], xs: number[]): number[] {
+  const n = grid.length;
+  if (n < 2) return xs.map(() => (n ? 0 : -1));
+  const step = (grid[n - 1] - grid[0]) / (n - 1);
+  return xs.map((x) => {
+    if (x < grid[0] - step || x > grid[n - 1] + step) return -1;
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (grid[mid] <= x) lo = mid; else hi = mid;
+    }
+    return Math.abs(grid[hi] - x) < Math.abs(grid[lo] - x) ? hi : lo;
+  });
+}
+
+/**
+ * Height scale picked once per site and reach: true scale when the relief then shows at least 60 px,
+ * otherwise the smallest scale that brings it to about 120 px.
+ */
+export function defaultExag(reliefM: number, pxPerM: number): number {
+  return reliefM * pxPerM >= 60 ? 1 : autoExag(reliefM, pxPerM, 110);
+}
+
+/**
+ * How much of the off-slice marker belongs at the A end (1) or the A′ end (0). The marker sits at the nearer end;
+ * within `blendDeg` of square to the slice the two ends share it, so it never jumps from one end to the other.
+ */
+export function endShare(az: number, bearing: number, blendDeg = 12): number {
+  const c = Math.cos((az - bearing) * D);
+  return Math.min(1, Math.max(0, 0.5 + c / (2 * Math.sin(blendDeg * D))));
+}

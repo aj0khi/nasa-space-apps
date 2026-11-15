@@ -8,14 +8,14 @@ import MissionPanel from "../components/mission/MissionPanel";
 import MoonVsEarth from "../components/learn/MoonVsEarth";
 import { useApp } from "../state/store";
 
-export default function SectionView({ letter }: { letter: string }) {
+export default function SectionView({ letter, detailsError }: { letter: string; detailsError: string | null }) {
   const mode = useApp((s) => s.mode);
   return (
     <div className="scrollview">
       <SunProfile letter={letter} />
       <section className="row">
         <SkyDome />
-        <Countdowns />
+        <Countdowns detailsError={detailsError} />
         <div style={{ flex: 1, minWidth: "min(320px, 100%)" }}><Timeline /></div>
       </section>
       <CrossSection />

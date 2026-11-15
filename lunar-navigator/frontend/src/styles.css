@@ -83,6 +83,9 @@ td, th { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: lef
 .mark.green { color: var(--green); } .mark.yellow { color: var(--yellow); } .mark.red { color: var(--red); }
 .lname { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .landkey { font-size: 11px; color: var(--muted); margin-top: 8px; }
+.catalog-picker { margin-top: 12px; }
+.catalog-picker form { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.catalog-picker select { width: 100%; min-width: 0; padding: 8px; border: 1.5px solid var(--line-strong); border-radius: 6px; background: var(--bg); font-size: 16px; }
 
 /* selected site */
 .sel-title { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }

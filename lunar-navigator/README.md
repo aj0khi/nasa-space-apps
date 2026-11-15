@@ -12,10 +12,14 @@ and rims, and whether the site/date gives enough **power** (sunlight) and **comm
 Start on the home page and select **Explore the lunar map**; existing links to
 specific maps and sites still open the navigator directly.
 
-1. **Pick a site.** Choose Apollo 11, Chandrayaan‑3, a south‑pole Artemis candidate, or type your own coordinates.
+1. **Pick a site.** Choose an A–H candidate, select a mission site from the catalog, or type your own coordinates.
+   Catalog locations are evaluated with the custom-point model; unverified entries are labeled.
+   Sites outside the south-pole 2D map can still be selected.
 2. **Pick a date.** Drag the **sun slider** to explore modeled lighting. The photographic map is a fixed mosaic, not live imagery.
 3. **Why rims?** Split view: the crater floor stays dark and holds ice, while the rim keeps sunlight. That's why we land on rims.
 4. **Can we operate?** The status badge turns green, yellow or red based on power and comms windows, with a countdown to sunset and Earthset.
+   A–H countdowns use six-hour samples up to 15 days ahead; custom-point estimates use the
+   separate horizon model up to 30 days ahead. No event in that interval does not mean never.
 5. **Compare.** Put 2–3 sites side by side and see the trade‑offs.
 6. **Plan the trip.** Pick a vehicle type, departure date and arrival date, then export a mission plan JSON (what would be "uploaded to the craft").
 

@@ -45,9 +45,15 @@ function useMoonTexture() {
   return tex;
 }
 
-function Moon({ spin }: { spin: boolean }) {
+function Moon({ spin, onReady }: { spin: boolean; onReady?: () => void }) {
   const mesh = useRef<THREE.Mesh>(null);
   const tex = useMoonTexture();
+  // Tell the page once the textured Moon has actually been drawn, so it can fade in (with its glow) as one piece.
+  useEffect(() => {
+    if (!tex || !onReady) return;
+    let id = requestAnimationFrame(() => { id = requestAnimationFrame(onReady); });
+    return () => cancelAnimationFrame(id);
+  }, [tex, onReady]);
   const geo = useMemo(() => new THREE.SphereGeometry(1, 128, 96), []);
   useFrame((_, dt) => {
     if (spin && mesh.current) mesh.current.rotation.y += dt * 0.045;
@@ -61,7 +67,7 @@ function Moon({ spin }: { spin: boolean }) {
   );
 }
 
-export default function MoonGlobe({ className }: { className?: string }) {
+export default function MoonGlobe({ className, onReady }: { className?: string; onReady?: () => void }) {
   const [reduced] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   return (
     <div className={className} aria-hidden="true">
@@ -69,7 +75,7 @@ export default function MoonGlobe({ className }: { className?: string }) {
         <ambientLight intensity={0.03} />
         {/* Sun from upper left: a soft terminator across the disc, like the reference shots */}
         <directionalLight position={[-4, 3.5, 2.2]} intensity={4.2} />
-        <Moon spin={!reduced} />
+        <Moon spin={!reduced} onReady={onReady} />
       </Canvas>
     </div>
   );

@@ -167,27 +167,8 @@ const scaleName = (e: number) => (e === 1 ? "1:1" : `×${e}`);
 interface Lock { site: string; az: number; auto: boolean } // auto = chosen by the panel when the site opened
 interface Viewed { on: string; timeMs: number; rising: boolean } // the sunrise or sunset the slice was lined up with
 
-/** Smooth follow (trial): glide from the ground on screen to the next slice instead of swapping it. */
-function useMorph(target: Slice | null, on: boolean, ms = 140): Slice | null {
-  const [shown, setShown] = useState<Slice | null>(target);
-  const cur = useRef<Slice | null>(target);
-  useEffect(() => {
-    const a = cur.current;
-    if (!on || !target || !a || a.x.length !== target.x.length) { cur.current = target; setShown(target); return; }
-    let raf = 0;
-    const t0 = performance.now();
-    const step = (t: number) => {
-      const k = Math.min(1, Math.max(0, (t - t0) / ms));
-      const next: Slice = k >= 1 ? target : { x: target.x.map((x, i) => a.x[i] + (x - a.x[i]) * k), z: target.z.map((z, i) => a.z[i] + (z - a.z[i]) * k) };
-      cur.current = next;
-      setShown(next);
-      if (k < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [target, on, ms]);
-  return on ? shown ?? target : target;
-}
+/** Play speed: milliseconds per step of the series (one step = one hour of lunar time). */
+const SPEEDS = [{ name: "Slow", ms: 240 }, { name: "Normal", ms: 120 }, { name: "Fast", ms: 60 }];
 
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
@@ -203,6 +184,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const [follow, setFollow] = useState(false); // optional: the slice turns with the body, in 16 steps
   const [smooth, setSmooth] = useState(true); // when following: turn in 1° steps and glide (on), or jump between 16 directions (off)
   const [mapBig, setMapBig] = useState(false); // the small map on the drawing, enlarged
+  const [stepMs, setStepMs] = useState(120); // play speed
   const turning = follow && smooth;
   const [mirror, setMirror] = useState(false); // draw the slice the other way round (A on the left)
   const [lengthKm, setLengthKm] = useState(8);
@@ -237,7 +219,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     // the direction is read once, when the positions for a new site arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, !now, lock?.site]);
-  const bearing = follow ? (now ? (smooth ? wholeDeg(targetAz) : snap16(targetAz)) : null) : lockAz;
+  const azNow = normAz(targetAz);
+  const bearing = follow ? (now ? (smooth ? Math.floor(azNow) % 360 : snap16(targetAz)) : null) : lockAz;
+  const turnF = turning && now ? azNow - Math.floor(azNow) : 0; // how far the body is from `bearing` toward the next degree
+  const bearingB = turning && bearing != null ? (bearing + 1) % 360 : null;
   const lockTo = (az: number) => {
     setFollow(false);
     setViewed(null);
@@ -256,7 +241,14 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   const section = useApi(() => (loc && bearing != null ? loadSection(loc, bearing, lengthKm).then((d) => ({ d, site: key })) : null),
     [key, bearing, lengthKm], turning ? 0 : 120);
   const sec = section.data && section.data.site === key ? section.data.d : null; // never another site's ground
-  const shown = sec ? sec.azimuth : bearing ?? 0; // direction of the slice on screen
+  const sectionB = useApi(() => (loc && bearingB != null ? loadSection(loc, bearingB, lengthKm).then((d) => ({ d, site: key })) : null),
+    [key, bearingB, lengthKm], 0);
+  const secB = sectionB.data && sectionB.data.site === key && bearingB != null
+    && Math.abs(sectionB.data.d.azimuth - bearingB) < 0.01 && Math.abs(sectionB.data.d.length_km - lengthKm) < 0.01 ? sectionB.data.d : null;
+  // Mixed only when both slices are the ones wanted; otherwise the whole-degree slice is shown as it is.
+  const mixed = turning && !!sec && !!secB && bearing != null && Math.abs(sec.azimuth - bearing) < 0.01
+    && Math.abs(sec.length_km - lengthKm) < 0.01 && sec.x_m.length === secB.x_m.length;
+  const shown = sec ? (mixed ? normAz(sec.azimuth + turnF) : sec.azimuth) : bearing ?? 0; // direction of the slice on screen
   const shownKm = sec ? sec.length_km : lengthKm;
   const stale = !!sec && bearing != null && (Math.abs(sec.azimuth - bearing) > 0.01 || Math.abs(sec.length_km - lengthKm) > 0.01);
 
@@ -270,16 +262,16 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   // Play: step through the lunar day (1 sample = 1 hour). The clock waits while the next slice is being read.
   const waiting = useRef(false);
-  waiting.current = !!loc && !section.error && (!sec || stale);
+  waiting.current = !!loc && !section.error && (!sec || stale || (turning && !secB && !sectionB.error));
   useEffect(() => {
     if (!playing || !pts.length) return;
     const id = setInterval(() => {
       if (waiting.current) return;
       const i = nearestIndex(pts, useApp.getState().time);
       setTime(new Date(pts[(i + 1) % pts.length].time));
-    }, 60);
+    }, stepMs);
     return () => clearInterval(id);
-  }, [playing, pts, setTime]);
+  }, [playing, pts, setTime, stepMs]);
 
   // Following the Sun: read all 16 directions in the background, one at a time, starting with the one on screen.
   const startState = useRef(0);
@@ -298,12 +290,17 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
   // Smooth follow: read the slices a few degrees either side ahead of time, so the ground never waits.
   useEffect(() => {
     if (!loc || !turning || bearing == null) return;
-    for (const d of [-1, 1, -2, 2, -3, 3]) loadSection(loc, normAz(bearing + d), lengthKm).catch(() => { /* read again when shown */ });
+    for (let d = 1; d <= 8; d++) for (const k of [-d, d]) loadSection(loc, normAz(bearing + k), lengthKm).catch(() => { /* read again when shown */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, turning, bearing, lengthKm]);
 
-  const sliceTarget = useMemo(() => (sec ? fromSection(sec) : null), [sec]);
-  const slice = useMorph(sliceTarget, turning);
+  const sliceA = useMemo(() => (sec ? fromSection(sec) : null), [sec]);
+  const sliceB = useMemo(() => (secB ? fromSection(secB) : null), [secB]);
+  // Smooth turning: the ground is the mix of the two neighbouring slices, weighted by the body's exact direction,
+  // so the ground and the body move together, step for step.
+  const slice: Slice | null = useMemo(() => (mixed && sliceA && sliceB
+    ? { x: sliceA.x.map((x, i) => x + (sliceB.x[i] - x) * turnF), z: sliceA.z.map((z, i) => z + (sliceB.z[i] - z) * turnF) }
+    : sliceA), [mixed, sliceA, sliceB, turnF]);
   const radius = sec?.curvature ? R_MOON_M : Infinity;
 
   // Where the body is relative to the slice. In the page = within 11.25° of the slice line, at either end.
@@ -955,6 +952,14 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <input id="t" type="range" min={0} max={Math.max(0, pts.length - 1)} value={idx}
             onChange={(e) => pts.length && setTime(new Date(pts[+e.target.value].time))} />
           <output>Day {dayN.toFixed(1)}</output>
+        </div>
+
+        <label>Play speed</label>
+        <div className="tabs" role="group" aria-label="How fast the time runs when playing">
+          {SPEEDS.map((v) => (
+            <button key={v.ms} className={stepMs === v.ms ? "active" : ""} aria-pressed={stepMs === v.ms} onClick={() => setStepMs(v.ms)}>{v.name}</button>
+          ))}
+          <span className="muted small" style={{ alignSelf: "center" }}>one lunar day in about {Math.round((Math.max(1, pts.length) * stepMs) / 1000)} seconds</span>
         </div>
 
         <label>Slice reach</label>

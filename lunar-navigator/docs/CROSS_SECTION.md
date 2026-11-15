@@ -9,8 +9,9 @@ where it stops being trustworthy. It lives in the same place as before and keeps
    Heights include the Moon's curvature, so a straight ray of light is a straight line on the drawing.
 2. **The slice is locked.** When a site opens the slice points at the Sun and then stays put, so the ground does
    not move while the time changes. "Sun on the left" and "Sun on the right" turn the slice to the Sun and draw it
-   on that side. "Follow the Sun" is an option: with "Smooth turning" on, the slice turns one degree at a time and
-   the ground glides between slices; with it off, the slice jumps between 16 fixed directions. While following,
+   on that side. "Follow the Sun" is an option: with "Smooth turning" on, the ground is a mix of the two whole-degree
+   slices either side of the Sun's exact direction, so ground and Sun move together step for step; with it off, the
+   slice jumps between 16 fixed directions. "Play speed" sets how fast the time runs. While following,
    the ground colours come from the slice alone (the body is then always in the page).
 3. **Event view.** "Next sunset" and "Next sunrise" (Earthset and Earthrise in the Earth tab) turn the slice to
    where the body crosses the skyline and move the time to 12 hours before. Dragging the slider then shows it sink

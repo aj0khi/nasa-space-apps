@@ -12,7 +12,8 @@ import TopBar from "./components/layout/TopBar";
 import DatePanel from "./components/rail/DatePanel";
 import LandingList from "./components/rail/LandingList";
 import SelectedSite from "./components/rail/SelectedSite";
-import CoordsBar from "./components/rail/CoordsBar";
+import CoordsBar, { GoToPoint } from "./components/rail/CoordsBar";
+import { ExpertOnly } from "./components/learn/ModeGate";
 import MissionSetup from "./components/rail/MissionSetup";
 import Conditions from "./components/rail/Conditions";
 import { useApi } from "./hooks/useApi";
@@ -109,6 +110,7 @@ function Navigator({ route }: { route: Route }) {
         <SelectedSite key={`selected:${selectionKey}`} loading={details.loading} catalogSite={catalogReady ? catalogSite : undefined}
           catalogPending={!!route.catalog && !catalogReady} catalogError={catalog.error ?? (catalog.data && !catalogSite ? "Site not found in the catalog." : null)} />
         {(!route.catalog || catalogReady) && <Conditions key={`conditions:${selectionKey}`} />}
+        <ExpertOnly><GoToPoint /></ExpertOnly>
         <CoordsBar cursor={cursor} />
       </aside>
     </div>

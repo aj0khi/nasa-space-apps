@@ -176,6 +176,39 @@ class Section(BaseModel):
     note: str | None = None
 
 
+class SliceLight(BaseModel):
+    """For every ground point along a slice and every time step: is the Sun / Earth in view from there?"""
+    azimuth: float
+    length_km: float
+    observer_m: float
+    x_m: list[float]         # N positions along the slice, same convention as Section.x_m, evenly spaced
+    times: list[str]         # T instants (ISO, UTC), the same grid as /ephemeris/windows for the same start/days/step
+    sun: list[str]           # T strings of N characters: '1' = Sun's centre above that point's ray-traced skyline
+    earth: list[str]         # same for Earth
+    sun_hours: list[float]   # per point: hours with the Sun in view over the whole series
+    earth_hours: list[float]
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
+class ShadowMap(BaseModel):
+    """Terrain around a site plus, per pixel, how high a body must be in each direction to be seen from there."""
+    lat: float
+    lon: float
+    size_km: float           # the map is size_km across, centred on the site, north of the site at the top
+    res: int                 # res x res pixels
+    observer_m: float
+    az_step_deg: float       # the horizon is given every az_step_deg of azimuth (0, step, 2*step ...)
+    elevation_m: list[float]  # res*res heights, row-major, row 0 = north edge, column 0 = west edge
+    horizon_b64: str         # base64 of uint8[res*res*(360/az_step_deg)], pixel-major then azimuth
+    horizon_scale: float     # angle (deg) = value * horizon_scale + horizon_offset
+    horizon_offset: float    # angles are in the LANDER's level frame: compare directly with the body's altitude at the site
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
 # ---------- Score ----------
 Status = Literal["green", "yellow", "red"]
 

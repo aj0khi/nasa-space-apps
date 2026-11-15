@@ -171,7 +171,8 @@ class _Grid:
 class _Terrain:
     """The DEM around one site at three resolutions."""
 
-    def __init__(self, target: str, lat: float, lon: float):
+    def __init__(self, target: str, lat: float, lon: float, tiers=None):
+        """`tiers` overrides TIERS: a list of (target pixel size m, radius read around the site m, used out to m)."""
         self.lat, self.lon = lat, lon
         xc, yc = (float(v) for v in _ll2xy(lat, lon))
         with rasterio.Env(**_GDAL_ENV):
@@ -184,7 +185,7 @@ class _Terrain:
                 if not same:  # _ll2xy below is written for exactly this grid
                     raise ValueError("The DEM is not the south polar stereographic grid this module assumes "
                                      "(lat_0 -90, lon_0 0, true scale at the pole, R 1737400 m).")
-                self.grids = [(_Grid(ds, xc, yc, rad, res), use_to) for res, rad, use_to in TIERS]
+                self.grids = [(_Grid(ds, xc, yc, rad, res), use_to) for res, rad, use_to in (tiers or TIERS)]
         self.finest_m = self.grids[0][0].res
         h0 = self.height(np.array([lat]), np.array([lon]), np.array([0.0]))[0]
         if not np.isfinite(h0):
@@ -331,21 +332,25 @@ def _synthetic_skyline(lat: float, lon: float, reason: str) -> dict:
             "dist_km": [None] * 360, "reach_km": MAX_REACH_KM, "synthetic": True, "source": source, "note": reason}
 
 
-def skyline(lat: float, lon: float) -> dict:
-    """360-degree ray-traced skyline at a site. Falls back to the synthetic model when the DEM cannot be used."""
+def skyline(lat: float, lon: float, observer_m: float | None = None) -> dict:
+    """360-degree ray-traced skyline at a site. Falls back to the synthetic model when the DEM cannot be used.
+
+    `observer_m` is the height of the eye (solar panel, antenna) above the ground; default OBSERVER_M (2 m).
+    """
     lat, lon = _site(lat, lon)
+    eye = OBSERVER_M if observer_m is None else round(float(min(max(observer_m, 0.5), 30.0)), 1)
     target = dem_target()
     if target is None:
         return _synthetic_skyline(lat, lon, "No DEM is installed and network reads are turned off.")
     if lat > COVERAGE_LAT:
         return _synthetic_skyline(lat, lon, "The DEM covers 80 S to the pole only.")
-    cache = _cache_file("skyline", target, lat, lon)
+    cache = _cache_file("skyline", target, lat, lon, f"eye{eye}")
     hit = _cache_get(cache, "elev_deg")
     if hit:
         return hit
     try:
         t = _terrain(target, lat, lon)
-        elev, top, low, dist, seen, need = _trace(t, OBSERVER_M)
+        elev, top, low, dist, seen, need = _trace(t, eye)
     except Exception as exc:  # unreadable DEM, no network: degrade, never break the page
         return _synthetic_skyline(lat, lon, f"The DEM could not be read: {exc}")
     cut = np.isfinite(need)
@@ -359,7 +364,7 @@ def skyline(lat: float, lon: float) -> dict:
         if dem_top is not None:
             note += (f" The highest ground in the whole file is {dem_top:,.0f} m, so "
                      + ("this could matter here." if lowest < dem_top else "this is unlikely to matter here."))
-    out = {"lat": lat, "lon": lon, "observer_m": OBSERVER_M, "elev_deg": np.round(elev, 3).tolist(),
+    out = {"lat": lat, "lon": lon, "observer_m": eye, "elev_deg": np.round(elev, 3).tolist(),
            "elev_max_deg": np.round(top, 3).tolist(), "elev_min_deg": np.round(low, 3).tolist(),
            "dist_km": np.round(dist, 3).tolist(), "seen_km": np.round(seen, 1).tolist(),
            "edge_needs_m": [None if not np.isfinite(v) else round(float(v)) for v in need],

@@ -293,3 +293,36 @@ export interface HorizonsCheck {
   local_ephemeris: EngineEphemeris;
   nasa_jpl_horizons: { source: string; status: string; request_url?: string; raw_excerpt?: string; note?: string };
 }
+
+/** GET /terrain/slice-light: for every ground point along a slice and every time step, is the body in view from there? (owner: LEAD) */
+export interface SliceLight {
+  azimuth: number;
+  length_km: number;
+  observer_m: number;
+  x_m: number[]; // N positions along the slice, same convention as Section.x_m, evenly spaced
+  times: string[]; // T instants (ISO, UTC): the same grid as /ephemeris/windows for the same start, days and step
+  sun: string[]; // T strings of N characters: "1" = the Sun's centre is above that point's ray-traced skyline
+  earth: string[]; // same for Earth
+  sun_hours: number[]; // per point: hours with the Sun in view over the whole series
+  earth_hours: number[];
+  synthetic: boolean;
+  source: string;
+  note?: string | null;
+}
+
+/** GET /terrain/shadow-map: terrain around the site plus a per-pixel horizon, for drawing real shadows (owner: LEAD). */
+export interface ShadowMap {
+  lat: number;
+  lon: number;
+  size_km: number; // the map is size_km across, centred on the site, north of the site at the top
+  res: number; // res x res pixels
+  observer_m: number;
+  az_step_deg: number; // the horizon is given every az_step_deg of azimuth (0, step, 2 x step ...)
+  elevation_m: number[]; // res*res heights, row-major, row 0 = north edge, column 0 = west edge
+  horizon_b64: string; // base64 of uint8[res*res*(360/az_step_deg)], pixel-major then azimuth
+  horizon_scale: number; // angle (deg) = value * horizon_scale + horizon_offset
+  horizon_offset: number; // angles are in the lander's level frame: compare directly with the body's altitude at the site
+  synthetic: boolean;
+  source: string;
+  note?: string | null;
+}

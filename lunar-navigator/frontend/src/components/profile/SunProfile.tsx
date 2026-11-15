@@ -21,6 +21,8 @@ import {
   inSlice, lightHours, nearestIndex, nextCrossing, shadeSlice, sightHit, skylineDistAt, snap16, stateNumber,
 } from "./profileMath";
 import type { Body, BodyView } from "./profileMath";
+import SkylineStrip from "./SkylineStrip";
+import SliceMiniMap from "./SliceMiniMap";
 
 const W = 1000;
 const TOP = 120; // room above the terrain for the Sun and its rays
@@ -494,6 +496,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         </>
       )}
 
+      <SkylineStrip skyline={skyline} series={pts} index={idx} body={body} sliceAzimuth={shown} letter={letter}
+        onPickAzimuth={(az) => { setFollowSun(false); setBearing(az); }}
+        onPickTime={(i) => pts[i] && setTime(new Date(pts[i].time))} />
+
       <div className="profile-hint">
         {hint && (
           <>
@@ -514,7 +520,9 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       <p className="muted small">Sun and Earth symbols are schematic, not to scale. This slice only models blockers along the profile; terrain outside it can also cast shadows.</p>
 
       <div className="profile-stats">
-        <PlanView bearing={shown} sunAz={now ? targetAz : undefined} sunUp={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} color={view.color} />
+        <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
+          bodyInView={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} observerM={EYE_M} color={view.color}
+          onPickAzimuth={(az) => { setFollowSun(false); setBearing(az); }} />
         {!expert ? (
           <div className="stats">
             <Stat label={body === "sun" ? "Landing spot" : "Call home?"} value={skyWords.value} sub={skyWords.sub} />
@@ -660,33 +668,5 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
       <div className="stat-value">{value}</div>
       {sub && <div className="stat-sub">{sub}</div>}
     </div>
-  );
-}
-
-/** Top-down compass: the slice as an arrow, the Sun (or Earth) as a dot on its azimuth. */
-function PlanView({ bearing, sunAz, sunUp, color = "var(--sun)" }: { bearing: number; sunAz?: number; sunUp: boolean; color?: string }) {
-  const p = (az: number, r: number) => ({ x: r * Math.sin((az * Math.PI) / 180), y: -r * Math.cos((az * Math.PI) / 180) });
-  const a = p(bearing, 62), b = p(bearing + 180, 62);
-  const s = sunAz != null ? p(sunAz, 52) : null;
-  return (
-    <figure className="planview">
-      <svg viewBox="-80 -92 160 172" width={150}>
-        <text y={-78} textAnchor="middle" fontSize={13} fill="var(--text)">N</text>
-        <circle r={68} fill="none" stroke="var(--line)" />
-        <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0,0 L10,5 L0,10 z" fill="var(--text)" />
-          </marker>
-        </defs>
-        <line x1={b.x} y1={b.y} x2={a.x} y2={a.y} stroke="var(--text)" strokeWidth={2} markerEnd="url(#arrow)" />
-        {s && (
-          <>
-            <line x1={0} y1={0} x2={s.x} y2={s.y} stroke={color} strokeDasharray="3 3" />
-            <circle cx={s.x} cy={s.y} r={7} fill={sunUp ? color : "none"} stroke={color} strokeWidth={2} />
-          </>
-        )}
-      </svg>
-      <figcaption>Plan view</figcaption>
-    </figure>
   );
 }

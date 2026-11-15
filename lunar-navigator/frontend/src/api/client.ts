@@ -1,7 +1,6 @@
 // Typed API client. Owner: LEAD. One function per endpoint in docs/API.md.
 import type {
-  CompareResult, ElevationGrid, EvalAll, Features, HorizonsCheck, Illumination, Mask, MissionPlan, Profile, Score, Season,
-  Section, Site, SiteDetails, Skyline, SunEarthState, Vehicle, Windows,
+  CompareResult, ElevationGrid, EvalAll, Features, HorizonsCheck, Illumination, Mask, MissionPlan, Profile, Score, Season, Section, ShadowMap, Site, SiteDetails, Skyline, SliceLight, SunEarthState, Vehicle, Windows,
 } from "../types";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
@@ -48,7 +47,13 @@ export const api = {
   crossSection: (p: LatLon, lines: { azimuth: number; length_km: number }[]) =>
     post<{ profiles: Profile[]; synthetic: boolean }>("/terrain/cross-section", { ...p, lines }),
   // Sight lines for the cross section: ray-traced 360° skyline, and the ground along one slice (x_m / z_m).
-  skyline: (p: LatLon) => get<Skyline>("/terrain/skyline", { lat: p.lat, lon: p.lon }),
+  skyline: (p: LatLon, observer_m = 2) => get<Skyline>("/terrain/skyline", { lat: p.lat, lon: p.lon, observer_m }),
+  // Ray-traced light for every ground point along a slice, over the same time grid as `windows`.
+  sliceLight: (p: LatLon, azimuth: number, length_km: number, start: string, days: number, step_min = 60, observer_m = 2, points = 201) =>
+    get<SliceLight>("/terrain/slice-light", { lat: p.lat, lon: p.lon, azimuth, length_km, start, days, step_min, observer_m, points }),
+  // Terrain around the site with a per-pixel horizon, for the mini-map's shadows.
+  shadowMap: (p: LatLon, size_km: number, res = 96, observer_m = 2) =>
+    get<ShadowMap>("/terrain/shadow-map", { lat: p.lat, lon: p.lon, size_km, res, observer_m }),
   section: (p: LatLon, azimuth: number, length_km: number) =>
     get<Section>("/terrain/section", { lat: p.lat, lon: p.lon, azimuth, length_km }),
   score: (p: LatLon, start: string, days = 14) => get<Score>("/score", { ...p, start, days }),

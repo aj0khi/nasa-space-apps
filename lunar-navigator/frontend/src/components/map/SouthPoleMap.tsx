@@ -114,7 +114,7 @@ export default function SouthPoleMap(props: Props) {
 
   const [failedTiles, setFailedTiles] = useState<string[]>([]);
   const imgUrl = useMemo(
-    () => (illum && !illum.synthetic && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
+    () => (illum && (!hasTrek || (showShadows && !illum.synthetic)) ? illumToDataUrl(illum, hasTrek) : null),
     [illum, hasTrek, showShadows],
   );
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
@@ -142,7 +142,11 @@ export default function SouthPoleMap(props: Props) {
       <svg
         ref={svg}
         role="img"
-        aria-label={hasTrek ? "Lunar south pole map with NASA Moon Trek imagery and landing-site markers" : "Lunar south pole modeled sunlit relief and landing-site markers"}
+        aria-label={hasTrek
+          ? "Lunar south pole map with NASA Moon Trek imagery and landing-site markers"
+          : illum?.synthetic
+            ? "Simulated south pole terrain, sunlight, shadows, and landing-site markers"
+            : "Lunar south pole modeled sunlit relief and landing-site markers"}
         viewBox={`${view.cx - view.half} ${view.cy - view.half} ${2 * view.half} ${2 * view.half}`}
         onWheel={(e) => {
           const p = toKm(e.clientX, e.clientY);

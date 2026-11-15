@@ -46,7 +46,9 @@ NASA Moon Trek's fixed photographic, relief, elevation-color and slope imagery.
 The estimated-shadow overlay is optional and off by default. Moon Trek imagery
 does not provide numerical elevation for the 3D terrain or modeled shadows.
 Unmodeled relief areas are
-blank rather than filled with the photo. The topographic view switches between a
+blank rather than filled with the photo. Without the DEM, the separate **Simulated shadows**
+map shows illustrative lighting over synthetic terrain instead of overlaying it on imagery.
+The topographic view switches between a
 contour map and its A–A′ profile instead of displaying them together. Scores, shadows and windows are exploratory,
 not validated landing guidance.
 See [backend/data/README.md](backend/data/README.md) for DEM setup and limitations.

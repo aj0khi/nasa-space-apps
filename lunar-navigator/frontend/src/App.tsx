@@ -81,7 +81,7 @@ function Navigator({ route }: { route: Route }) {
             </button>
           ))}
         </nav>
-        <div className="viewbody">
+        <div className={`viewbody${route.view === "2d" ? " viewbody-map" : ""}`}>
           {route.view === "2d" && <MapView onCursor={setCursor} />}
           {needsSelection && !hasSelection && (
             <div className="empty">

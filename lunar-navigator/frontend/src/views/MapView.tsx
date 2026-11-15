@@ -23,7 +23,7 @@ const TREK_OPTIONS: { id: TrekLayerId; label: string; title: string }[] = [
   { id: "wac", label: "WAC Photo", title: TREK_SP_LAYERS.wac.title },
   { id: "lola_color", label: "Color Elev", title: TREK_SP_LAYERS.lola_color.title },
   { id: "lola_slope", label: "Slope", title: TREK_SP_LAYERS.lola_slope.title },
-  { id: "none", label: "Sunlit relief", title: "LOLA-derived modeled terrain lighting" },
+  { id: "none", label: "Sunlit relief", title: "Modeled terrain lighting" },
 ];
 
 interface Props {
@@ -42,6 +42,8 @@ export default function MapView({ onCursor }: Props) {
   const hour = hourKey(time);
   const illum = useLatest(() => (look === "lit" ? api.illumination(hour, minLat, 512) : null), `${hour}|${minLat}|${look}`);
   const a = !illum.error && illum.data && illum.data.min_lat === minLat ? illum.data : null;
+  const simulatedView = trekLayer === "none" && a?.synthetic;
+  const showsLighting = a && (trekLayer === "none" || (showShadows && !a.synthetic));
 
   const lookSwitch = (
     <div className="tabs" role="group" aria-label="Map type">
@@ -55,20 +57,6 @@ export default function MapView({ onCursor }: Props) {
 
   return (
     <div className="mapview">
-      <SouthPoleMap
-        sites={sites}
-        features={features.data}
-        illum={a}
-        selectedId={selectedId}
-        custom={custom}
-        minLat={minLat}
-        trekLayer={trekLayer}
-        showShadows={showShadows}
-        onSelect={(id) => go.site(id)}
-        onPick={go.point}
-        onCursor={onCursor}
-      />
-
       <div className="map-overlay top-left">
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {lookSwitch}
@@ -79,7 +67,7 @@ export default function MapView({ onCursor }: Props) {
               </button>
             ))}
           </div>
-          <div className="tabs" role="group" aria-label="NASA Moon Trek Basemap">
+          <div className="tabs" role="group" aria-label="Map layer">
             {TREK_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
@@ -88,7 +76,7 @@ export default function MapView({ onCursor }: Props) {
                 className={trekLayer === opt.id ? "active" : ""}
                 onClick={() => setTrekLayer(opt.id)}
               >
-                {opt.label}
+                {opt.id === "none" && a?.synthetic ? "Simulated shadows" : opt.label}
               </button>
             ))}
           </div>
@@ -114,35 +102,53 @@ export default function MapView({ onCursor }: Props) {
         <div className="sunbox">
           <span className="sundot" />
           {a ? <span><b>Sun {a.sun.elevation_at_pole >= 0 ? "+" : ""}{a.sun.elevation_at_pole.toFixed(1)}°</b> at pole
-            {!a.synthetic && a.lit_fraction !== null && <> · <b>{Math.round(a.lit_fraction * 100)}%</b> modeled area lit</>}
+            {showsLighting && a.lit_fraction !== null && <> · <b>{Math.round(a.lit_fraction * 100)}%</b> {simulatedView ? "simulated" : "modeled"} area lit</>}
             {" · "}{fmtUtc(a.time)}{mode === "expert" && <> · subsolar {fmtLon(a.sun.subsolar_lon)}, {a.sun.subsolar_lat.toFixed(2)}°</>}
           </span> : <span className="muted">{illum.error ? "Lighting unavailable." : "Lighting the terrain…"}</span>}
           {illum.loading && a && <span className="spinner" aria-label="updating" />}
         </div>
       </div>
 
+      <SouthPoleMap
+        sites={sites}
+        features={features.data}
+        illum={a}
+        selectedId={selectedId}
+        custom={custom}
+        minLat={minLat}
+        trekLayer={trekLayer}
+        showShadows={showShadows}
+        onSelect={(id) => go.site(id)}
+        onPick={go.point}
+        onCursor={onCursor}
+      />
+
       <div className="map-overlay bottom-left legend">
         <div className="legend-row">
           <span><i className="sq green" />GO</span>
           <span><i className="sq yellow" />CAUTION</span>
           <span><i className="sq red" />NO-GO</span>
-          {a && !a.synthetic && (trekLayer === "none" || showShadows) && <>
-            <span><i className="sw lit" />estimated sunlight</span>
-            <span><i className="sw dark" />estimated shadow</span>
+          {showsLighting && <>
+            <span><i className="sw lit" />{simulatedView ? "simulated sunlight" : "estimated sunlight"}</span>
+            <span><i className="sw dark" />{simulatedView ? "simulated shadow" : "estimated shadow"}</span>
           </>}
           <span><i className="sw psr" />cold-trap crater</span>
         </div>
         <div className="muted small">
           {activeSpec
             ? `Basemap: ${activeSpec.attribution} (${activeSpec.productLabel})`
-            : "Sunlit relief is modeled from LOLA elevation, not a photograph."}
+            : simulatedView
+              ? "Simulated terrain and shadows: illustrative only, not actual lunar terrain."
+              : a
+                ? "Sunlit relief is modeled from LOLA elevation, not a photograph."
+                : "Terrain lighting is modeled, not a photograph."}
         </div>
         {a && !a.synthetic && (trekLayer === "none" || showShadows) && <div className="muted small">
           Estimated lighting: {a.pixel_km.toFixed(1)} km pixels, {a.horizon_limit_km} km shadow range;
           {" "}{Math.round(a.coverage_fraction * 100)}% of map modeled. Unknown areas are not shaded.
         </div>}
-        {a?.synthetic && (trekLayer === "none" || showShadows) && <div className="muted small" role="status">
-          LOLA elevation is unavailable; modeled shadows are not shown. Moon Trek imagery remains available.
+        {a?.synthetic && trekLayer !== "none" && showShadows && <div className="muted small" role="status">
+          LOLA elevation is unavailable; shadows cannot be overlaid on imagery. Choose Simulated shadows for an illustrative model.
         </div>}
         <div className="muted small">Moon Trek image lighting is fixed; its photographed shadows do not move.</div>
         <div className="muted small">Site ratings are exploratory, not validated landing guidance.</div>

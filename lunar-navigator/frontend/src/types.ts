@@ -260,3 +260,11 @@ export interface HorizonsCheck {
   local_ephemeris: EngineEphemeris;
   nasa_jpl_horizons: { source: string; status: string; request_url?: string; raw_excerpt?: string; note?: string };
 }
+
+/** GET /api/terrain/psr: NASA LOLA permanently-shadowed-region map on the /elevation grid (cell = shadowed fraction 0..1). */
+export interface PsrGrid {
+  available: boolean;
+  mask: number[][] | null;
+  psr_fraction: number | null;
+  source: string | null;
+}

@@ -108,6 +108,10 @@ the selected date.
 
 `GET /api/terrain/rims?lat=&lon=&size_km=20&res=128` → `{ "mask": (0|1)[][], "synthetic": false }`
 
+`GET /api/terrain/psr?lat=&lon=&size_km=20&res=128` → `{ "available": true, "mask": number[][], "psr_fraction": 0.12, "source": "..." }`
+Permanently shadowed regions from NASA's LOLA PSR map (south of 80°S). Each cell is the fraction (0–1) of that cell
+that never sees the Sun; same grid as `/elevation`. `available: false` (no mask) outside the map or with no data source.
+
 `POST /api/terrain/cross-section` body `{ "lat", "lon", "lines": [{ "azimuth": 0, "length_km": 10 }] }`
 → `{ "profiles": [{ "azimuth": 0, "distance_m": number[], "elevation_m": number[] }], "synthetic": true }`
 

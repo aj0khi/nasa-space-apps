@@ -77,8 +77,7 @@ def prepare_site(site: dict[str, Any]) -> dict[str, Any]:
         return {**site, "terrain_source": "synthetic"}
     coords = site["coordinates"]
     lon = (float(coords["lon"]) + 180) % 360 - 180
-    stat = path.stat()
-    grid, horizon, pixel_m = _site_grid(float(coords["lat"]), lon, str(path), stat.st_mtime_ns, stat.st_size)
+    grid, horizon, pixel_m = _site_grid(float(coords["lat"]), lon, *terrain.dem_identity(path))
     center = (grid.shape[0] - 1) // 2
     return {
         **site,

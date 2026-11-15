@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timezone
+from contextlib import nullcontext
 from functools import lru_cache
 
 import numpy as np
@@ -58,11 +59,7 @@ def _round_hour(when: datetime) -> str:
 
 def polar_illumination(when: datetime, min_lat: float = -80, res: int = 384) -> dict:
     path = terrain._dem_path()
-    if path:
-        stat = path.stat()
-        identity = (str(path), stat.st_mtime_ns, stat.st_size)
-    else:
-        identity = None
+    identity = terrain.dem_identity(path) if path else None
     return _polar_illumination(_round_hour(when), float(min_lat), int(res), identity)
 
 
@@ -70,13 +67,11 @@ def polar_illumination(when: datetime, min_lat: float = -80, res: int = 384) -> 
 def _lola_grid(half_km: float, res: int, identity: tuple[str, int, int]) -> np.ndarray:
     pixel_m = 2 * half_km * 1000 / (res - 1)
     grid = np.full((res, res), np.nan, dtype=np.float32)
-    with rasterio.open(identity[0]) as source:
-        if source.count != 1 or source.crs is None:
+    # streamed NASA reads go one at a time (see terrain._REMOTE_LOCK); a local file needs no lock
+    lock = terrain._REMOTE_LOCK if identity[0].startswith("/vsicurl/") else nullcontext()
+    with lock, rasterio.open(identity[0], **terrain.overview_options(identity[0], pixel_m)) as dem:
+        if dem.count != 1 or dem.crs is None:
             raise ValueError(f"DEM must have one elevation band and a lunar coordinate system: {identity[0]}")
-        levels = source.overviews(1)
-        candidates = [i for i, factor in enumerate(levels) if max(source.res) * factor <= pixel_m]
-    open_options = {"overview_level": candidates[-1]} if candidates else {}
-    with rasterio.open(identity[0], **open_options) as dem:
         target_crs = f"+proj=stere +lat_0=-90 +lon_0=0 +R={terrain.MOON_RADIUS_M} +units=m +no_defs"
         reproject(
             source=rasterio.band(dem, 1),

@@ -5,7 +5,16 @@
 
 ## South-pole DEM
 
-Download [LOLA LDEM_80S_20MPP_ADJ.TIF](https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF),
+**No download needed.** With no local file, the backend streams NASA's cloud-optimized GeoTIFFs straight from
+PGDA, fetching only the 512 × 512 tiles (or built-in lower-resolution overviews) each request needs:
+
+- Elevation: `https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF` (env `LOLA_DEM_URL`)
+- Permanently shadowed regions: `https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LPSR_80S_20MPP_ADJ.TIF` (env `LOLA_PSR_URL`, served by `/api/terrain/psr`)
+
+Set either variable to `off` to disable streaming (e.g. offline). First requests for a new area take a few
+seconds; fetched tiles are cached in memory. A local copy is still faster and works offline:
+
+Optionally download [LOLA LDEM_80S_20MPP_ADJ.TIF](https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF),
 covering 80°S to the pole. Put it in `dem/` (with a `.tif` or `.tiff` extension),
 or keep it at the repository root as `LDEM_80S_20MPP_ADJ.tiff`. The `dem/` file takes
 precedence; keep only one TIFF there. The file is local data and should not be committed.
@@ -13,6 +22,7 @@ precedence; keep only one TIFF there. The file is local data and should not be c
 The local terrain elevation, cross-section, shadow and rim endpoints sample this DEM.
 They report `synthetic: false` when using it. Outside the DEM region, or when no DEM
 is present, they return the existing synthetic terrain and report `synthetic: true`.
+Optional local PSR map: put `LPSR_80S_20MPP_ADJ.TIF` in `dem/psr/`.
 Requests whose area includes missing DEM data return an error rather than filling it
 with invented elevations. Raster pixels are 20 m apart; effective resolution and
 height uncertainty vary. Local shadows only account for terrain inside the tile.

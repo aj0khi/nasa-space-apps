@@ -48,11 +48,11 @@ function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
     const v = b & 127;
     if (overlayMode) {
       if (b & 128) {
-        // Sunlit overlay: a clearly warm wash (stronger on slopes facing the Sun) so lit ground stands out
+        // Sunlit overlay: a white wash (stronger on slopes facing the Sun) so lit ground reads as bright daylight
         img.data[k] = 255;
-        img.data[k + 1] = 190;
-        img.data[k + 2] = 80;
-        img.data[k + 3] = Math.round(85 + (v / 127) * 70);
+        img.data[k + 1] = 255;
+        img.data[k + 2] = 255;
+        img.data[k + 3] = Math.round(50 + (v / 127) * 70);
       } else {
         // Shadow overlay: deep lunar night shadow that still lets LOLA/WAC craters show through
         img.data[k] = 4;
@@ -237,10 +237,10 @@ export default function SouthPoleMap(props: Props) {
           />
         )}
 
-        {/* Edge of sunlight: a crisp gold line around every lit area */}
+        {/* Edge of sunlight: a crisp white line around every lit area */}
         {sunEdge && (
           <g clipPath="url(#south-pole-disc)" pointerEvents="none">
-            <path d={sunEdge.d} fill="none" stroke="#ffc65c" strokeWidth={1.4} vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+            <path d={sunEdge.d} fill="none" stroke="#ffffff" strokeWidth={1.4} vectorEffect="non-scaling-stroke" strokeLinejoin="round"
               transform={(() => { const s = (2 * sunEdge.half) / sunEdge.n; return `translate(${-sunEdge.half + s / 2} ${-sunEdge.half + s / 2}) scale(${s})`; })()} />
           </g>
         )}

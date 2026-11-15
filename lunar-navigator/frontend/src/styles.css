@@ -178,8 +178,8 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 .sw { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 6px; }
-.sw.lit { background: #ffbe50; } .sw.dark { background: #0a1430; border: 1px solid #3a4a6a; }
-.sw.edge { height: 0; border-top: 2px solid #ffc65c; border-radius: 0; vertical-align: middle; }
+.sw.lit { background: #f4f4f4; } .sw.dark { background: #0a1430; border: 1px solid #3a4a6a; }
+.sw.edge { height: 0; border-top: 2px solid #ffffff; border-radius: 0; vertical-align: middle; }
 .sw.psr { border: 1.5px dashed #fff; border-radius: 50%; }
 .lightnow { width: 1em; text-align: center; font-size: 13px; }
 .lightnow.on { color: var(--sun); } .lightnow.off { color: #7f8db3; }

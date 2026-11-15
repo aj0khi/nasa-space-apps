@@ -1,6 +1,6 @@
 // Typed API client. Owner: LEAD. One function per endpoint in docs/API.md.
 import type {
-  CompareResult, ElevationGrid, EvalAll, Features, HorizonsCheck, Illumination, Mask, MissionPlan, Profile, PsrGrid, Score, Season,
+  CompareResult, ElevationGrid, EvalAll, Features, HorizonsCheck, Illumination, LitRelief, Mask, MissionPlan, Profile, PsrGrid, Score, Season,
   Site, SiteDetails, SunEarthState, Vehicle, Windows,
 } from "../types";
 
@@ -49,6 +49,8 @@ export const api = {
   elevation: (p: LatLon, size_km = 20, res = 128) => get<ElevationGrid>("/terrain/elevation", { ...pt(p), size_km, res }),
   shadow: (p: LatLon, sun_alt: number, sun_az: number, size_km = 20, res = 128) =>
     get<Mask>("/terrain/shadow", { ...pt(p), sun_alt, sun_az, size_km, res }),
+  lighting: (p: LatLon, sun_alt: number, sun_az: number, size_km = 20, res = 256) =>
+    get<LitRelief>("/terrain/lighting", { ...pt(p), sun_alt, sun_az, size_km, res }),
   rims: (p: LatLon, size_km = 20, res = 128) => get<Mask>("/terrain/rims", { ...pt(p), size_km, res }),
   psr: (p: LatLon, size_km = 20, res = 128) => get<PsrGrid>("/terrain/psr", { ...pt(p), size_km, res }),
   crossSection: (p: LatLon, lines: { azimuth: number; length_km: number }[]) =>

@@ -15,6 +15,7 @@ import { detail, sampleTile } from "../../lib/regolith";
 import { useApp } from "../../state/store";
 import { useExpert } from "../learn/ModeGate";
 import { groundMaterial } from "./groundMaterial";
+import { DetailedSun, DetailedEarth } from "./celestialBodies";
 
 const TILE_KM = 20;
 const TILE_RES = 511; // ~39 m per sample (the backend allows at most 512 across)
@@ -319,16 +320,20 @@ function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump, beaco
       <group ref={sky}>
         <points geometry={stars}><pointsMaterial color="#cfd6e6" size={1.4} sizeAttenuation={false} /></points>
         {sunDir && (
-          <mesh position={sunDir.clone().multiplyScalar(SKY_M)}>
-            <sphereGeometry args={[sunR, 24, 16]} />
-            <meshBasicMaterial color="#fff6d8" />
-          </mesh>
+          <DetailedSun
+            position={sunDir.clone().multiplyScalar(SKY_M)}
+            radius={sunR}
+            label={sunUp ? "☀️ Sun" : undefined}
+            opacity={sunUp ? 1.0 : 0.25}
+          />
         )}
         {earthDir && (
-          <mesh position={earthDir.clone().multiplyScalar(SKY_M)}>
-            <sphereGeometry args={[earthR, 32, 20]} />
-            <meshBasicMaterial color="#4d8fff" />
-          </mesh>
+          <DetailedEarth
+            position={earthDir.clone().multiplyScalar(SKY_M)}
+            radius={earthR}
+            label="🌍 Earth"
+            opacity={1.0}
+          />
         )}
       </group>
     </>

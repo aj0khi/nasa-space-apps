@@ -2,7 +2,7 @@
 // Integrates live NASA Moon Trek WMTS polar stereographic tiles (LROC WAC optical mosaic, LOLA 30m hillshade,
 // LOLA colorized elevation, and LOLA slope) with real-time dynamic solar illumination & shadow ray-casting.
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
 import { getVisiblePolarTiles, TrekLayerId } from "../../lib/moontrek";
 import { STATUS_UI } from "../rail/LandingList";
@@ -26,7 +26,7 @@ interface Props {
 const COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
 /**
  * Decode the backend's byte grid into a PNG:
- * - When `overlayMode = false`: opaque warm sunlit ground & cold blue shadow (standalone synthetic map).
+ * - When `overlayMode = false`: opaque warm sunlit ground & cold blue shadow.
  * - When `overlayMode = true`: translucent golden sunlight & deep blue-black lunar night tint so the
  *   real NASA Moon Trek satellite tiles underneath remain crisp and visible!
  */
@@ -80,6 +80,7 @@ function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
 }
 
 export default function SouthPoleMap(props: Props) {
+  const sunGradient = useId();
   const {
     sites,
     features,
@@ -88,7 +89,7 @@ export default function SouthPoleMap(props: Props) {
     custom,
     minLat,
     trekLayer = "lola_shade",
-    showShadows = true,
+    showShadows = false,
     onSelect,
     onPick,
     onCursor,
@@ -111,8 +112,9 @@ export default function SouthPoleMap(props: Props) {
     [trekLayer, view.cx, view.cy, view.half, outer],
   );
 
+  const [failedTiles, setFailedTiles] = useState<string[]>([]);
   const imgUrl = useMemo(
-    () => (illum && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
+    () => (illum && !illum.synthetic && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
     [illum, hasTrek, showShadows],
   );
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
@@ -140,7 +142,7 @@ export default function SouthPoleMap(props: Props) {
       <svg
         ref={svg}
         role="img"
-        aria-label="Lunar south pole map with NASA Moon Trek imagery and landing-site markers"
+        aria-label={hasTrek ? "Lunar south pole map with NASA Moon Trek imagery and landing-site markers" : "Lunar south pole modeled sunlit relief and landing-site markers"}
         viewBox={`${view.cx - view.half} ${view.cy - view.half} ${2 * view.half} ${2 * view.half}`}
         onWheel={(e) => {
           const p = toKm(e.clientX, e.clientY);
@@ -173,6 +175,11 @@ export default function SouthPoleMap(props: Props) {
         }}
       >
         <defs>
+          <radialGradient id={sunGradient}>
+            <stop offset="0%" stopColor="#fffdf3" />
+            <stop offset="70%" stopColor="#ffe7a4" />
+            <stop offset="100%" stopColor="#e4a953" />
+          </radialGradient>
           <clipPath id="south-pole-disc">
             <circle r={outer} />
           </clipPath>
@@ -193,6 +200,8 @@ export default function SouthPoleMap(props: Props) {
                 width={t.size + 0.35}
                 height={t.size + 0.35}
                 preserveAspectRatio="none"
+                onLoad={() => setFailedTiles((old) => old.includes(t.key) ? old.filter((key) => key !== t.key) : old)}
+                onError={() => setFailedTiles((old) => old.includes(t.key) ? old : [...old, t.key])}
               />
             ))}
           </g>
@@ -203,12 +212,13 @@ export default function SouthPoleMap(props: Props) {
           <image
             data-ground="1"
             href={imgUrl}
-            x={-illum.half_km}
-            y={-illum.half_km}
-            width={2 * illum.half_km}
-            height={2 * illum.half_km}
+            x={-illum.half_km - illum.pixel_km / 2}
+            y={-illum.half_km - illum.pixel_km / 2}
+            width={2 * illum.half_km + illum.pixel_km}
+            height={2 * illum.half_km + illum.pixel_km}
             preserveAspectRatio="none"
             clipPath="url(#south-pole-disc)"
+            pointerEvents="none"
           />
         )}
 
@@ -253,12 +263,7 @@ export default function SouthPoleMap(props: Props) {
         {/* Sun and Earth on the horizon */}
         {sun && illum && (
           <g transform={`translate(${sun.x},${sun.y})`} pointerEvents="none" opacity={illum.sun.elevation_at_pole > -2 ? 1 : 0.55}>
-            {Array.from({ length: 8 }, (_, i) => {
-              const a = (i * Math.PI) / 4;
-              return <line key={i} x1={Math.cos(a) * 13 * u} y1={Math.sin(a) * 13 * u} x2={Math.cos(a) * 18 * u} y2={Math.sin(a) * 18 * u}
-                stroke="var(--sun)" strokeWidth={2 * u} strokeLinecap="round" />;
-            })}
-            <circle r={10 * u} fill="var(--sun)" />
+            <circle r={10 * u} fill={`url(#${sunGradient})`} />
             <text y={30 * u} fontSize={9 * u} fill="var(--sun)" textAnchor="middle" paintOrder="stroke" stroke="#000" strokeWidth={2 * u}>
               Sun {illum.sun.elevation_at_pole >= 0 ? "+" : ""}{illum.sun.elevation_at_pole.toFixed(1)}°
             </text>
@@ -307,6 +312,8 @@ export default function SouthPoleMap(props: Props) {
           );
         })()}
       </svg>
+      {hasTrek && trekTiles.some((tile) => failedTiles.includes(tile.key)) &&
+        <div role="status" className="error">Some Moon Trek imagery tiles could not be loaded.</div>}
 
       <div className="mapctl">
         <button aria-label="Zoom in" onClick={() => setView((v) => ({ ...v, half: Math.max(8, v.half / 1.4) }))}>＋</button>

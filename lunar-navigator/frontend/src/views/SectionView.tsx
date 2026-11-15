@@ -16,7 +16,7 @@ export default function SectionView({ letter }: { letter: string }) {
       <section className="row">
         <SkyDome />
         <Countdowns />
-        <div style={{ flex: 1, minWidth: 320 }}><Timeline /></div>
+        <div style={{ flex: 1, minWidth: "min(320px, 100%)" }}><Timeline /></div>
       </section>
       <CrossSection />
       <MissionPanel />

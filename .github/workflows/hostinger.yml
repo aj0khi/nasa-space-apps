@@ -1,0 +1,19 @@
+name: Deploy to Hostinger VPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Compose project
+        uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          project-name: lunar-navigator
+          docker-compose-path: lunar-navigator/docker-compose.yml

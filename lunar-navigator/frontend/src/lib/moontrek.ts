@@ -234,16 +234,14 @@ export async function renderSiteTrekCanvas(
     const r0 = Math.max(0, Math.floor((center.y - radiusKm + SP_TOP_LEFT_KM) / spanKm));
     const r1 = Math.min(n - 1, Math.floor((center.y + radiusKm + SP_TOP_LEFT_KM) / spanKm));
 
-    const jobs: Promise<{ img: HTMLImageElement; xKm: number; yKm: number } | null>[] = [];
+    const jobs: Promise<{ img: HTMLImageElement; xKm: number; yKm: number }>[] = [];
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const url = spTileUrl(product, z, r, c, "png");
         const xKm = -SP_TOP_LEFT_KM + c * spanKm;
         const yKm = -SP_TOP_LEFT_KM + r * spanKm;
         jobs.push(
-          loadTileImage(url)
-            .then((img) => ({ img, xKm, yKm }))
-            .catch(() => null),
+          loadTileImage(url).then((img) => ({ img, xKm, yKm })),
         );
       }
     }
@@ -264,7 +262,6 @@ export async function renderSiteTrekCanvas(
     ctx.scale(pxPerKm, pxPerKm);
     ctx.rotate((-lon * Math.PI) / 180);
     for (const item of loaded) {
-      if (!item) continue;
       ctx.drawImage(item.img, item.xKm - center.x, item.yKm - center.y, spanKm + 0.05, spanKm + 0.05);
     }
     ctx.restore();
@@ -282,24 +279,21 @@ export async function renderSiteTrekCanvas(
   const minLon = lon - dLon, maxLon = lon + dLon;
   const minLat = lat - dLat, maxLat = lat + dLat;
 
-  const c0 = Math.max(0, Math.floor((minLon + 180) / degPerTile));
-  const c1 = Math.min(cols - 1, Math.floor((maxLon + 180) / degPerTile));
+  const c0 = Math.floor((minLon + 180) / degPerTile);
+  const c1 = Math.floor((maxLon + 180) / degPerTile);
   const r0 = Math.max(0, Math.floor((90 - maxLat) / degPerTile));
   const r1 = Math.min(rows - 1, Math.floor((90 - minLat) / degPerTile));
 
-  const jobs: Promise<{ img: HTMLImageElement; r: number; c: number } | null>[] = [];
+  const jobs: Promise<{ img: HTMLImageElement; r: number; c: number }>[] = [];
   for (let r = r0; r <= r1; r++) {
     for (let c = c0; c <= c1; c++) {
       jobs.push(
-        loadTileImage(eqTileUrl(z, r, c))
-          .then((img) => ({ img, r, c }))
-          .catch(() => null),
+        loadTileImage(eqTileUrl(z, r, ((c % cols) + cols) % cols)).then((img) => ({ img, r, c })),
       );
     }
   }
   const loaded = await Promise.all(jobs);
   for (const item of loaded) {
-    if (!item) continue;
     const tileWest = -180 + item.c * degPerTile;
     const tileNorth = 90 - item.r * degPerTile;
     const x0 = ((tileWest - minLon) / (2 * dLon)) * canvasPx;
@@ -333,8 +327,7 @@ export async function renderGlobalMoonCanvas(z: 1 | 2 = 2): Promise<HTMLCanvasEl
         loadTileImage(eqTileUrl(z, r, c))
           .then((img) => {
             ctx.drawImage(img, c * tilePx, r * tilePx, tilePx, tilePx);
-          })
-          .catch(() => {}),
+          }),
       );
     }
   }

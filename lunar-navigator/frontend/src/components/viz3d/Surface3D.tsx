@@ -96,6 +96,8 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
   const [trekLayer, setTrekLayer] = useState<Exclude<TrekLayerId, "none"> | "plain">("lola_shade");
   const [siteTex, setSiteTex] = useState<THREE.CanvasTexture | null>(null);
   const [globeTex, setGlobeTex] = useState<THREE.CanvasTexture | null>(null);
+  const [siteTexError, setSiteTexError] = useState(false);
+  const [globeTexError, setGlobeTexError] = useState(false);
 
   const key = `${loc.lat},${loc.lon}`;
   const elev = useApi(() => api.elevation(loc, 20, 96), [key]);
@@ -103,8 +105,9 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
 
   // Load NASA Moon Trek texture for the 20 km × 20 km 3D terrain mesh
   useEffect(() => {
+    setSiteTex(null);
+    setSiteTexError(false);
     if (trekLayer === "plain") {
-      setSiteTex(null);
       return;
     }
     let cancelled = false;
@@ -118,7 +121,7 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
         setSiteTex(tex);
       })
       .catch(() => {
-        if (!cancelled) setSiteTex(null);
+        if (!cancelled) setSiteTexError(true);
       });
     return () => {
       cancelled = true;
@@ -127,15 +130,16 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
 
   // Load NASA Moon Trek Global LROC WAC mosaic for the 3D Moon Globe (progressive z=1 then z=2)
   useEffect(() => {
-    if (viewMode !== "globe" || globeTex) return;
+    if (viewMode !== "globe") return;
     let cancelled = false;
+    setGlobeTexError(false);
     renderGlobalMoonCanvas(1).then((c1) => {
       if (cancelled) return;
       const t1 = new THREE.CanvasTexture(c1);
       t1.colorSpace = THREE.SRGBColorSpace;
       t1.needsUpdate = true;
       setGlobeTex(t1);
-      renderGlobalMoonCanvas(2).then((c2) => {
+      return renderGlobalMoonCanvas(2).then((c2) => {
         if (cancelled) return;
         const t2 = new THREE.CanvasTexture(c2);
         t2.colorSpace = THREE.SRGBColorSpace;
@@ -143,14 +147,19 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
         t2.needsUpdate = true;
         setGlobeTex(t2);
       });
+    }).catch(() => {
+      if (!cancelled) setGlobeTexError(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [viewMode, globeTex]);
+  }, [viewMode]);
+
+  useEffect(() => () => siteTex?.dispose(), [siteTex]);
+  useEffect(() => () => globeTex?.dispose(), [globeTex]);
 
   const geom = useMemo(() => {
-    if (!elev.data) return null;
+    if (!elev.data || elev.error) return null;
     const { grid, pixel_m } = elev.data;
     const n = grid.length, size = (n - 1) * pixel_m / 1000; // km
     const g = new THREE.PlaneGeometry(size, size, n - 1, n - 1);
@@ -159,12 +168,12 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
     for (let i = 0; i < pos.count; i++) pos.setZ(i, ((grid[Math.floor(i / n)][i % n] - ref) / 1000) * VERT_EXAGGERATION);
     g.computeVertexNormals();
     return g;
-  }, [elev.data]);
+  }, [elev.data, elev.error]);
 
   const [resetKey, setResetKey] = useState(0);
   const siteZ = 0;
-  const earth = state.data?.earth;
-  const sun = state.data?.sun;
+  const earth = state.error ? undefined : state.data?.earth;
+  const sun = state.error ? undefined : state.data?.sun;
 
   const light = useMemo(() => {
     if (!sun) return new THREE.Vector3(0, 10, 10);
@@ -244,7 +253,7 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
                 <meshBasicMaterial color="#ffffff" side={THREE.DoubleSide} />
               </mesh>
             </group>
-            {sun && <SkyBody alt={sun.altitude} az={sun.azimuth} color="#e8a33d" radius={0.9} />}
+            {sun && <SkyBody alt={sun.altitude} az={sun.azimuth} color="#fff1c8" radius={0.9} />}
             {earth && <SkyBody alt={earth.altitude} az={earth.azimuth} color="#4da3ff" radius={0.7} />}
           </>
         ) : (
@@ -289,7 +298,7 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
             {/* Sun & Earth indicators in space around the Moon */}
             <mesh position={globeSunPos.clone().normalize().multiplyScalar(15)}>
               <sphereGeometry args={[0.8, 24, 16]} />
-              <meshBasicMaterial color="#e8a33d" />
+              <meshBasicMaterial color="#fff1c8" />
             </mesh>
             <mesh position={globeEarthPos.clone().normalize().multiplyScalar(14)}>
               <sphereGeometry args={[0.6, 24, 16]} />
@@ -299,13 +308,24 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
         )}
       </Canvas>
 
+      {viewMode === "terrain" && <div className="muted small" role="status">
+        {elev.error ? `Terrain unavailable: ${elev.error}` : elev.data
+          ? `Elevation: ${elev.data.synthetic ? "synthetic (LOLA DEM unavailable at this site)" : "LOLA DEM"}.`
+          : "Loading terrain…"}
+        {siteTexError && " Moon Trek texture unavailable; showing the plain mesh."}
+        {state.error && ` Sun and Earth positions unavailable: ${state.error}`}
+      </div>}
+      {viewMode === "globe" && globeTexError && <div className="error" role="status">
+        Moon Trek globe imagery could not be fully loaded.
+      </div>}
       <div className="muted small">
         Drag to rotate · scroll to zoom · right-drag to pan.{" "}
         <span style={{ color: "var(--sun)" }}>●</span> Sun{sun ? ` ${sun.altitude.toFixed(1)}° ${sun.altitude > 0 ? "above" : "below"} the horizon` : ""} ·{" "}
         <span style={{ color: "var(--earth)" }}>●</span> Earth{earth ? ` ${earth.altitude.toFixed(1)}° ${earth.altitude > 0 ? "above" : "below"} the horizon` : ""} ·{" "}
         {viewMode === "terrain"
-          ? "NASA Moon Trek WMTS texture draped over local 3D topography · white marker = landing site."
+          ? "Moon Trek imagery, when available, is draped over the elevation mesh · white marker = landing site."
           : "NASA Moon Trek Global LROC WAC Mosaic (LRO_WAC_Mosaic_Global_303ppd_v02) · click a South Pole marker to select a site."}
+        {" "}Sun and Earth markers are not to scale.
       </div>
     </div>
   );

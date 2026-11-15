@@ -4,14 +4,14 @@
 //   #/3d?lat=-89.5&lon=10         3D view of any clicked point
 import { useEffect, useState } from "react";
 
-export type View = "2d" | "section" | "3d" | "compare";
+export type View = "home" | "2d" | "section" | "3d" | "compare";
 export interface Route { view: View; site?: string; lat?: number; lon?: number }
 
-const VIEWS: View[] = ["2d", "section", "3d", "compare"];
+const VIEWS: View[] = ["home", "2d", "section", "3d", "compare"];
 
 export function parseHash(hash: string): Route {
   const [path, query = ""] = hash.replace(/^#\/?/, "").split("?");
-  const view = (VIEWS as string[]).includes(path) ? (path as View) : "2d";
+  const view = !path ? "home" : (VIEWS as string[]).includes(path) ? (path as View) : "2d";
   const q = new URLSearchParams(query);
   const lat = Number(q.get("lat")), lon = Number(q.get("lon"));
   if (q.get("lat") && q.get("lon") && Number.isFinite(lat) && Number.isFinite(lon)) return { view, lat, lon };

@@ -5,7 +5,7 @@ export default function TopBar() {
   const { mode, setMode } = useApp();
   return (
     <header className="topbar">
-      <a href="#/2d" className="brand">🌙 Lunar Landing Site Navigator</a>
+      <a href="#/home" className="brand">Lunar Landing Site Navigator</a>
       <span className="muted small">South pole</span>
       <div className="tabs" style={{ marginLeft: "auto" }} role="group" aria-label="Detail level">
         <button className={mode === "beginner" ? "active" : ""} onClick={() => setMode("beginner")}>Beginner</button>

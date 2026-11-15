@@ -10,6 +10,13 @@ covering 80°S to the pole. Put it in `dem/` (with a `.tif` or `.tiff` extension
 or keep it at the repository root as `LDEM_80S_20MPP_ADJ.tiff`. The `dem/` file takes
 precedence; keep only one TIFF there. The file is local data and should not be committed.
 
+**No download needed:** with no local file, the backend reads NASA's copy directly over the
+internet. The GeoTIFF is tiled with overviews, so only the needed 512×512 tiles are fetched
+(first look at an area ~5–8 s, repeat visits cached) and large areas use its lower-resolution
+overviews. If NASA is unreachable, terrain falls back to the synthetic model for 5 minutes and
+retries. `LOLA_REMOTE=0` turns remote reading off; `LOLA_DEM_URL` points at another copy.
+Tests never use the network (`tests/conftest.py`). A local file is still faster and works offline.
+
 The local terrain elevation, cross-section, shadow and rim endpoints sample this DEM.
 They report `synthetic: false` when using it. Outside the DEM region, or when no DEM
 is present, they return the existing synthetic terrain and report `synthetic: true`.

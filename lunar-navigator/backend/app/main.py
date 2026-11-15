@@ -10,10 +10,12 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.routers import ephemeris, evaluation, illumination, mission, score, sites, terrain
 
 app = FastAPI(title="Lunar Landing Site Navigator API", version="0.3.0")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 extra_origins = [origin.strip() for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 if "*" in extra_origins:

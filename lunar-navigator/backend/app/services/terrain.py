@@ -148,11 +148,22 @@ def _pick_level(path: str, pixel_m: float) -> int | None:
     return candidates[-1] if candidates else None
 
 
+@lru_cache(maxsize=32)
+def _local_cached(
+    path_str: str, mtime_ns: int, file_size: int, lat: float, lon: float, size_km: float, res: int, resampling: Resampling
+) -> np.ndarray:
+    p = Path(path_str)
+    with rasterio.open(p, **overview_options(p, pixel_size_m(size_km, res))) as src:
+        return _reproject_from(src, p, lat, lon, size_km, res, resampling)
+
+
 def _reproject_local(path: Path | str, lat: float, lon: float, size_km: float, res: int, resampling: Resampling) -> np.ndarray:
     """Resample band 1 of a polar GeoTIFF onto the local site grid (row 0 = north, site at the centre)."""
     if isinstance(path, Path):
-        with rasterio.open(path, **overview_options(path, pixel_size_m(size_km, res))) as src:
-            return _reproject_from(src, path, lat, lon, size_km, res, resampling)
+        stat = path.stat()
+        return _local_cached(
+            str(path), stat.st_mtime_ns, stat.st_size, round(float(lat), 6), round(float(lon), 6), float(size_km), int(res), resampling
+        ).copy()
     return _remote_cached(path, round(lat, 6), round(lon, 6), float(size_km), int(res), resampling).copy()
 
 
@@ -257,20 +268,39 @@ def shadow_mask(grid: np.ndarray, pixel_m: float, sun_alt: float, sun_az: float,
     if sun_alt <= 0:
         return np.zeros_like(grid, dtype=np.uint8)
     h, w = grid.shape
-    rows, cols = np.mgrid[0:h, 0:w].astype(float)
     az = np.radians(sun_az)
-    dr, dc = -np.cos(az), np.sin(az)  # one-pixel step toward the Sun
-    tan_sun = np.tan(np.radians(sun_alt))
-    lit = np.ones_like(grid, dtype=bool)
+    dr, dc = float(-np.cos(az)), float(np.sin(az))  # one-pixel step toward the Sun
+    tan_sun = float(np.tan(np.radians(sun_alt)))
+    lit = np.ones((h, w), dtype=bool)
     steps = max_steps or int(np.hypot(h, w))
+    g_f32 = np.asarray(grid, dtype=np.float32)
+
     for k in range(1, steps + 1):
-        rr, cc = rows + dr * k, cols + dc * k
-        inside = (rr >= 0) & (rr <= h - 1) & (cc >= 0) & (cc <= w - 1)
-        if not inside.any():
+        sr = dr * k
+        sc = dc * k
+        r0 = int(np.floor(sr))
+        c0 = int(np.floor(sc))
+        # Valid target window in destination [r_start:r_end, c_start:c_end] where both (r0, c0) and (r0+1, c0+1) are inside [0, h-1]×[0, w-1]
+        r_start = max(0, -r0)
+        r_end = min(h, h - 1 - r0)
+        c_start = max(0, -c0)
+        c_end = min(w, w - 1 - c0)
+        if r_start >= r_end or c_start >= c_end:
             break
-        z = ndimage.map_coordinates(grid, [rr, cc], order=1, mode="nearest")
-        blocked = inside & ((z - grid) / (k * pixel_m) > tan_sun)
-        lit &= ~blocked
+        fr = np.float32(sr - r0)
+        fc = np.float32(sc - c0)
+        sr0 = r_start + r0
+        sc0 = c_start + c0
+        rh = r_end - r_start
+        cw = c_end - c_start
+        z = (
+            np.float32((1.0 - fr) * (1.0 - fc)) * g_f32[sr0:sr0 + rh, sc0:sc0 + cw]
+            + np.float32((1.0 - fr) * fc) * g_f32[sr0:sr0 + rh, sc0 + 1:sc0 + 1 + cw]
+            + np.float32(fr * (1.0 - fc)) * g_f32[sr0 + 1:sr0 + 1 + rh, sc0:sc0 + cw]
+            + np.float32(fr * fc) * g_f32[sr0 + 1:sr0 + 1 + rh, sc0 + 1:sc0 + 1 + cw]
+        )
+        base = g_f32[r_start:r_end, c_start:c_end]
+        lit[r_start:r_end, c_start:c_end] &= ~((z - base) > np.float32(k * pixel_m * tan_sun))
     return lit.astype(np.uint8)
 
 

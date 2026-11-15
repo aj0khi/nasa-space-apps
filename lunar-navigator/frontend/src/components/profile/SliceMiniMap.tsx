@@ -185,9 +185,9 @@ export default function SliceMiniMap({ loc, sliceAzimuth, lengthKm, letter, body
     const what = bodyAlt == null || bodyAz == null ? `Top-down view of the real terrain. The ${body === "sun" ? "shadows appear" : "view of Earth appears"} once the position of ${the} is known.`
       : body === "sun" ? `Shadows at this moment, ray traced on the real terrain, seen from ${observerM} m above each point. Dark means the centre of the Sun is hidden there.`
       : `Dark means no line of sight to Earth at this moment from ${observerM} m above that point, ray traced on the real terrain.`;
-    caption = `${what} The dot is the lander, filled when it sees ${the}. The grey relief shading is only for shape. Each pixel is ${pixel} wide and directions are taken every ${step}, so narrow ${body === "sun" ? "shadows" : "gaps"} are averaged.`;
+    caption = `${what} Each pixel is ${pixel} wide, so narrow ${body === "sun" ? "shadows" : "gaps"} are averaged.`;
     if (m.map.note) caption += ` ${m.map.note}`;
-    if (expert) extra = `Map ${m.map.size_km} km across, ${m.res} × ${m.res} pixels of ${pixel}. Horizon per pixel every ${step}, stored to ${m.map.horizon_scale}°, in the lander's level frame. ${m.map.source}.`;
+    if (expert) extra = `The dot is the lander, filled when it sees ${the}. The grey relief shading is only for shape. Map ${m.map.size_km} km across, ${m.res} × ${m.res} pixels. Horizon per pixel every ${step}, stored to ${m.map.horizon_scale}°, in the lander's level frame. ${m.map.source}.`;
   }
   const status = !loc ? null : m ? null : !entry || entry.state === "loading" ? "loading the map..." : entry.state === "failed" ? "no shadow map here" : null;
   const label = m

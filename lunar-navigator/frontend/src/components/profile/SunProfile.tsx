@@ -158,7 +158,7 @@ const fmtKm = (km: number) => (km < 10 ? km.toFixed(1) : km.toFixed(0));
 const fmtDist = (m: number) => (m < 1000 ? `${Math.max(10, Math.round(m / 10) * 10)} m` : `${fmtKm(m / 1000)} km`);
 const fmtDeg = (d: number) => `${Math.abs(d).toFixed(1)}°`;
 /** "1.6° above horizontal" / "0.3° below horizontal". Horizontal = the lander's level plane. */
-const aboveBelow = (alt: number) => `${fmtDeg(alt)} ${alt >= 0 ? "above" : "below"} horizontal`;
+const aboveBelow = (alt: number) => (Math.abs(alt) < 0.05 ? "level with horizontal (0.0°)" : `${fmtDeg(alt)} ${alt >= 0 ? "above" : "below"} horizontal`);
 const signed = (d: number) => `${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)}°`;
 /** "96°" or "22.5°": whole degrees unless the direction is one of the half-degree steps. */
 const fmtAz = (az: number) => `${Number.isInteger(az) ? az : az.toFixed(1)}°`;
@@ -678,7 +678,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       </div>
       <div className="profile-event" aria-live="polite">
         <span title={eventLine.text}>{eventLine.text}</span>
-        {eventLine.widen && <button onClick={() => pickLength(eventLine.widen!)}>Widen the slice to {eventLine.widen} km each way</button>}
+        {eventLine.widen && !hint?.widen && <button onClick={() => pickLength(eventLine.widen!)}>Widen the slice to {eventLine.widen} km each way</button>}
       </div>
 
       <div className="profile-frame">

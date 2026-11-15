@@ -67,12 +67,12 @@
 /* The caption keeps one height in every state; a long note scrolls inside it. */
 .minimap-caption {
   margin-top: 6px;
-  height: 132px;
+  height: 86px;
   overflow-y: auto;
   font-size: 12px;
   line-height: 1.38;
   text-align: left;
   color: var(--muted);
 }
-.minimap-expert .minimap-caption { height: 198px; }
+.minimap-expert .minimap-caption { height: 150px; }
 .minimap-extra { color: var(--muted); opacity: 0.85; }

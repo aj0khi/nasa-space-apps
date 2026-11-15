@@ -28,6 +28,7 @@ import {
 import type { Body, BodyView, SkyEvent, Slice } from "./profileMath";
 import SkylineStrip from "./SkylineStrip";
 import SliceMiniMap from "./SliceMiniMap";
+import { EarthSvg, SunSvg } from "../viz3d/celestialBodies";
 
 // ---- the frame: fixed, so nothing moves when the time, the slice or the body changes ----
 const W = 1000;
@@ -172,7 +173,6 @@ const SPEEDS = [{ name: "Slow", ms: 240 }, { name: "Normal", ms: 120 }, { name: 
 
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
-  const gradientId = useId();
   const groundId = useId();
   const insetId = useId();
   const { time, setTime, baseTime, setBaseTime } = useApp();
@@ -764,11 +764,6 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
             aria-label={`Terrain slice from ${compass(leftAz)} to ${compass(rightAz)}. ${angleText}. ${lineText}. ${view.pct}: ${shadePct != null ? `${shadePct}%` : "not known"}. Lander: ${skyWords.value}.`}>
             <defs>
-              <radialGradient id={gradientId}>
-                <stop offset="0%" stopColor={body === "sun" ? "#fffdf2" : "#c3e6fb"} />
-                <stop offset="65%" stopColor={body === "sun" ? "#ffe8a6" : "#4d98cf"} />
-                <stop offset="100%" stopColor={body === "sun" ? "#e5aa54" : "#173c6d"} />
-              </radialGradient>
               <linearGradient id={groundId} x1="0" x2="0" y1="0" y2="1">
                 <stop stopColor="#777a7b" />
                 <stop offset="100%" stopColor="#272b32" />
@@ -786,7 +781,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
             )}
             {draw.rays.map((r, i) => <line key={i} {...r} stroke={view.color} strokeOpacity={0.55} strokeWidth={1.2} />)}
             {/* in the page the marker is drawn before the ground, so higher ground on the slice hides it, as in a side view */}
-            {inPage && draw.markers.map((m, i) => <circle key={i} cx={m.x} cy={m.y} r={DISC} fill={`url(#${gradientId})`} fillOpacity={hidden ? 0.45 : 1} />)}
+            {/* In the page: the team's Sun and Earth, the same as in the 3D view. The angle is printed above, so no badge. */}
+            {inPage && draw.markers.map((m, i) => body === "sun"
+              ? <SunSvg key={i} x={m.x} y={m.y} r={DISC} badge="none" dim={hidden} />
+              : <EarthSvg key={i} x={m.x} y={m.y} r={DISC} badge="none" dim={hidden} />)}
             <path d={frame.groundFill} fill={`url(#${groundId})`} />
             {draw.air && <path d={draw.air} fill="var(--shadow-air)" />}
             {draw.runs.map((r, i) => (

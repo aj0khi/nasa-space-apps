@@ -161,6 +161,73 @@ class CrossSectionResponse(BaseModel):
     synthetic: bool = False
 
 
+# ---------- Sight lines (cross section). Owner: LEAD ----------
+class Skyline(BaseModel):
+    """Ray-traced terrain skyline at a site: the Sun or Earth is in view when above it at its azimuth."""
+    lat: float
+    lon: float
+    observer_m: float
+    elev_deg: list[float]  # 360 values; index = azimuth in whole degrees, clockwise from north; mean over that degree
+    elev_max_deg: list[float] | None = None  # highest skyline inside that degree (compare with the Sun's lower limb)
+    elev_min_deg: list[float] | None = None  # lowest skyline inside that degree (compare with the Sun's upper limb)
+    dist_km: list[float | None]  # distance to the terrain that sets the highest skyline in that direction
+    seen_km: list[float] | None = None  # how far the DEM reaches in that direction; below reach_km = lower bound only
+    edge_needs_m: list[float | None] | None = None  # where the DEM ends early: elevation ground past the edge would need to raise the skyline
+    dem_top_m: float | None = None  # highest ground in the whole DEM, for judging edge_needs_m
+    reach_km: float  # how far the rays were marched
+    site_elevation_m: float | None = None
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
+class Section(BaseModel):
+    """Ground along a straight slice through a site, toward `azimuth` (positive x) and behind it."""
+    azimuth: float
+    length_km: float
+    x_m: list[float]
+    z_m: list[float]  # height above the lander's ground point; includes the Moon's curvature when `curvature`
+    elevation_m: list[float]
+    site_elevation_m: float
+    curvature: bool
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
+class SliceLight(BaseModel):
+    """For every ground point along a slice and every time step: is the Sun / Earth in view from there?"""
+    azimuth: float
+    length_km: float
+    observer_m: float
+    x_m: list[float]         # N positions along the slice, same convention as Section.x_m, evenly spaced
+    times: list[str]         # T instants (ISO, UTC), the same grid as /ephemeris/windows for the same start/days/step
+    sun: list[str]           # T strings of N characters: '1' = Sun's centre above that point's ray-traced skyline
+    earth: list[str]         # same for Earth
+    sun_hours: list[float]   # per point: hours with the Sun in view over the whole series
+    earth_hours: list[float]
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
+class ShadowMap(BaseModel):
+    """Terrain around a site plus, per pixel, how high a body must be in each direction to be seen from there."""
+    lat: float
+    lon: float
+    size_km: float           # the map is size_km across, centred on the site, north of the site at the top
+    res: int                 # res x res pixels
+    observer_m: float
+    az_step_deg: float       # the horizon is given every az_step_deg of azimuth (0, step, 2*step ...)
+    elevation_m: list[float]  # res*res heights, row-major, row 0 = north edge, column 0 = west edge
+    horizon_b64: str         # base64 of uint8[res*res*(360/az_step_deg)], pixel-major then azimuth
+    horizon_scale: float     # angle (deg) = value * horizon_scale + horizon_offset
+    horizon_offset: float    # angles are in the LANDER's level frame: compare directly with the body's altitude at the site
+    synthetic: bool = False
+    source: str
+    note: str | None = None
+
+
 # ---------- Score ----------
 Status = Literal["green", "yellow", "red"]
 

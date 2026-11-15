@@ -107,10 +107,10 @@ function Navigator({ route }: { route: Route }) {
         </div>
       </main>
       <aside className="rail">
-        <DatePanel />
-        <MissionSetup />
         <LandingList loading={evaluation.loading} error={evaluation.error} onSelect={(id) => go.site(id)}
           catalog={catalog.data} catalogError={catalog.error} catalogId={route.catalog} />
+        <DatePanel />
+        <MissionSetup />
         <SelectedSite key={`selected:${selectionKey}`} loading={details.loading} catalogSite={catalogReady ? catalogSite : undefined}
           catalogPending={!!route.catalog && !catalogReady} catalogError={catalog.error ?? (catalog.data && !catalogSite ? "Site not found in the catalog." : null)} />
         {(!route.catalog || catalogReady) && <Conditions key={`conditions:${selectionKey}`} />}

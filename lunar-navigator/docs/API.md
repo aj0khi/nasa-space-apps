@@ -121,6 +121,81 @@ that never sees the Sun; same grid as `/elevation`. `available: false` (no mask)
 `POST /api/terrain/cross-section` body `{ "lat", "lon", "lines": [{ "azimuth": 0, "length_km": 10 }] }`
 → `{ "profiles": [{ "azimuth": 0, "distance_m": number[], "elevation_m": number[] }], "synthetic": true }`
 
+## Sight lines for the cross section (owner: LEAD)
+Additive. These do not change any endpoint above. Both read the LOLA DEM (a local file if installed, otherwise
+NASA's copy over the network) and fall back to the synthetic model, with `synthetic: true` and a `note`, when
+the DEM cannot be used or the point is north of 80°S.
+
+`GET /api/terrain/skyline?lat=&lon=` → `Skyline`: the ray-traced terrain skyline at the site.
+```json
+{ "lat": -84.8, "lon": 29.2, "observer_m": 2.0,
+  "elev_deg": [ 360 numbers ], "elev_max_deg": [ 360 ], "elev_min_deg": [ 360 ],
+  "dist_km": [ 360 numbers or null ], "seen_km": [ 360 ], "edge_needs_m": [ 360 numbers or null ],
+  "dem_top_m": 6975, "reach_km": 250.0, "site_elevation_m": 5334.4, "synthetic": false,
+  "source": "LOLA DEM LDEM_80S_20MPP_ADJ.TIF (read from NASA)", "note": "…" }
+```
+- `elev_deg[i]`: how high the terrain rises above the lander's horizontal at azimuth `i`° (clockwise from north),
+  seen from 2 m above the ground, with the Moon's curvature included. Mean over that degree.
+  **The Sun or Earth is in view when the centre of its disc is above `elev_deg` at its azimuth** (interpolate
+  between whole degrees). Do not add a separate curvature or "relief dip" term: it is already in the numbers.
+- `elev_max_deg`, `elev_min_deg`: highest and lowest skyline inside that degree, for testing the edges of the disc.
+- `dist_km[i]`: how far away the terrain that sets the skyline is. Under about 0.2 km it is the ground beside the
+  lander, and the answer then depends on the assumed 2 m eye height more than on anything else.
+- `seen_km[i]`: how far the terrain data reaches in that direction. The DEM stops at 80°S, so toward the north it
+  can end before `reach_km`. `edge_needs_m[i]` is the elevation that ground just past the edge would need in order
+  to rise above the skyline found (null where the data reaches all the way); compare it with `dem_top_m`, the
+  highest ground in the whole file. `note` says this in words.
+
+Accuracy: against an independent full-resolution calculation at six sites the skyline agrees to 0.007° RMS,
+0.04° worst case. The Sun's radius is 0.27°. Sampling: 8 rays per degree; 1 m steps to 300 m, 5 m to 2 km, then
+each step 0.3 % longer.
+
+`GET /api/terrain/section?lat=&lon=&azimuth=0&length_km=8` → `Section`: the ground along a straight slice
+through the site, `length_km` (0.5–150) toward `azimuth` and the same distance behind it.
+```json
+{ "azimuth": 90.0, "length_km": 8.0, "x_m": [ ... ], "z_m": [ ... ], "elevation_m": [ ... ],
+  "site_elevation_m": 5334.4, "curvature": true, "synthetic": false, "source": "…", "note": null }
+```
+`x_m` is negative behind the site and positive toward `azimuth`. `z_m` is height above the lander's ground point
+with curvature included, so a straight ray of light is a straight line when `x_m` and `z_m` share a scale.
+
+`GET /api/terrain/slice-light?lat=&lon=&azimuth=&length_km=&start=&days=29.53&step_min=60&observer_m=2&points=201`
+→ `SliceLight`: for every ground point along a slice and every time step, is the centre of the Sun (and of the
+Earth) above that point's own ray-traced skyline, seen from `observer_m` above the ground there? This is what
+makes the ground colours along a locked slice true: shadows on the line are mostly cast by terrain off the line.
+```json
+{ "azimuth": 186.0, "length_km": 8.0, "observer_m": 2.0, "x_m": [ N ], "times": [ T ISO strings ],
+  "sun": [ T strings of N characters, "1" = in view ], "earth": [ ... ],
+  "sun_hours": [ N ], "earth_hours": [ N ], "synthetic": false, "source": "…", "note": null }
+```
+`times` is the same grid as `/api/ephemeris/windows` for the same `start`, `days` and `step_min`; `x_m` follows the
+same convention as `Section.x_m` (a different, evenly spaced grid: interpolate by x). Measured on the real DEM:
+about 4 to 5 s for a new slice of 8 or 30 km reach from a local file, 300 kB for 201 points and 709 hourly steps.
+At the lander it gives the same answer as `/terrain/skyline` at all 709 steps (two sites); at points 12 to 27 km
+from the lander it agrees with a full-accuracy skyline computed at that point at 99.9 to 100 % of steps, differing
+only when the body is within 0.01° of the skyline. With no real terrain it answers 422 with the reason; it never
+returns made-up light.
+
+`GET /api/terrain/shadow-map?lat=&lon=&size_km=16&res=96&observer_m=2` → `ShadowMap`: a square map `size_km`
+across (2 to 320), centred on the site, `res` x `res` pixels (32 to 160), in the lander's flat frame: up is local
+north at the site, row 0 is the north edge, column 0 the west edge. It gives `elevation_m` per pixel and, per pixel
+and every 5° of azimuth, the altitude in the lander's level frame that a body at that azimuth must exceed to be
+seen from `observer_m` above that pixel, packed as one byte (angle = value * 0.25 - 16), pixel-major then azimuth,
+base64. A pixel is lit when the body's altitude at the lander is greater than its horizon at the body's azimuth,
+interpolated between the two neighbouring steps. Measured at Faustini rim (16 km map): the centre pixel differs
+from `/terrain/skyline` by 0.06° on average and 0.15° at worst as delivered (0.012° and 0.075° before the 0.25°
+rounding), and lit or shaded matched a direct ray march in 360 of 360 pixel and Sun cases. Cost: about 0.95 MB of
+JSON; the first request took 27 s on a busy 2-core machine, repeats come from the disk cache in milliseconds. Maps
+wider than about 80 km use coarser near data and say so in `note`. Without real terrain it answers 422.
+
+`GET /api/terrain/skyline` also takes `observer_m` (0.5 to 30, default 2): the height of the solar panel or antenna
+above the ground. On crests this changes the answer more than anything else.
+
+The first request for a site takes about 2 s from a local DEM and roughly 10 to 25 s when the DEM is read remotely.
+Results are cached in `backend/data/cache/` (not committed); the cache file names include a tag that changes
+with the code and settings. Set `LOLA_REMOTE=0` to forbid network reads. If the terrain cannot be read at all,
+`/terrain/section` answers 503.
+
 ## Viability score
 `GET /api/score?lat=&lon=&start=&days=14` → `Score`
 ```json

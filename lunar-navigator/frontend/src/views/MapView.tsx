@@ -137,7 +137,9 @@ export default function MapView({ onCursor }: Props) {
           {showsLighting && <>
             <span><i className="sw lit" />{simulatedView || simulatedOverlay ? "simulated sunlight" : "estimated sunlight"}</span>
             <span><i className="sw dark" />{simulatedView || simulatedOverlay ? "simulated shadow" : "estimated shadow"}</span>
+            <span><i className="sw edge" />edge of sunlight</span>
           </>}
+          <span>☀ / ☾ site lit / in shadow</span>
           <span><i className="sw psr" />cold-trap crater</span>
         </div>
         <div className="muted small">

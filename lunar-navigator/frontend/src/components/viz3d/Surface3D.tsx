@@ -1,6 +1,6 @@
 // 3D terrain & 3D Lunar Globe powered by NASA Moon Trek WMTS textures and real Sun/Earth lighting. Owner: SKY3D.
 import { Canvas, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { api } from "../../api/client";
@@ -36,15 +36,20 @@ function latLonToSphere(latDeg: number, lonDeg: number, radius: number): THREE.V
 }
 
 /** Drag to orbit, scroll to zoom, right-drag to pan. `resetKey` changes → back to the starting view. */
-function Controls({ resetKey, mode }: { resetKey: number; mode: "terrain" | "globe" }) {
+function Controls({ resetKey, mode, onClose }: { resetKey: number; mode: "terrain" | "globe"; onClose?: (close: boolean) => void }) {
   const { camera, gl } = useThree();
   // Created in the effect (not useMemo) so StrictMode's dev-only unmount/remount gets a fresh, connected instance.
   const [controls, setControls] = useState<OrbitControls | null>(null);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   useEffect(() => {
     const c = new OrbitControls(camera, gl.domElement); // uses camera.up (z), so the ground stays level
     c.enableDamping = false;
+    // Zoomed in on the site terrain until the ~200 m data cells show: offer the ground-level explorer instead.
+    const report = () => onClose?.(modeRef.current === "terrain" && camera.position.distanceTo(c.target) < 7);
+    c.addEventListener("change", report);
     setControls(c);
-    return () => c.dispose();
+    return () => { c.removeEventListener("change", report); c.dispose(); };
   }, [camera, gl]);
   useEffect(() => {
     if (!controls) return;
@@ -85,7 +90,8 @@ function SkyBody({ alt, az, color, radius }: { alt: number; az: number; color: s
   );
 }
 
-export default function Surface3D({ height = 380 }: { height?: number }) {
+export default function Surface3D({ height = 380, onExplore }: { height?: number; onExplore?: () => void }) {
+  const [close, setClose] = useState(false);
   const time = useApp((s) => s.time);
   const loc = useApp((s) => s.location()) ?? { lat: -89.45, lon: 222.0 };
   const sites = useApp((s) => s.sites());
@@ -224,8 +230,13 @@ export default function Surface3D({ height = 380 }: { height?: number }) {
         </div>
       </div>
 
+      {onExplore && close && viewMode === "terrain" && (
+        <div className="zoom-hint">
+          You're closer than the data's ~200 m detail. <button onClick={onExplore}>🧑‍🚀 Explore on foot</button>
+        </div>
+      )}
       <Canvas style={{ flex: 1, minHeight: 0, cursor: "grab" }} shadows camera={{ position: HOME_TERRAIN, up: [0, 0, 1], fov: 45 }}>
-        <Controls resetKey={resetKey} mode={viewMode} />
+        <Controls resetKey={resetKey} mode={viewMode} onClose={setClose} />
 
         {viewMode === "terrain" ? (
           <>

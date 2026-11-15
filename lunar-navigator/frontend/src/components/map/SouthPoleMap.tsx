@@ -4,6 +4,7 @@
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
 import { useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
+import { contours } from "../../lib/topo";
 import { getVisiblePolarTiles, TrekLayerId } from "../../lib/moontrek";
 import { STATUS_UI } from "../rail/LandingList";
 import { normLon } from "../../state/store";
@@ -48,17 +49,17 @@ function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
     const v = b & 127;
     if (overlayMode) {
       if (b & 128) {
-        // Sunlit overlay: warm solar tint proportional to slope incidence
+        // Sunlit overlay: a clearly warm wash (stronger on slopes facing the Sun) so lit ground stands out
         img.data[k] = 255;
-        img.data[k + 1] = 212;
-        img.data[k + 2] = 128;
-        img.data[k + 3] = Math.round(28 + (v / 127) * 52);
+        img.data[k + 1] = 190;
+        img.data[k + 2] = 80;
+        img.data[k + 3] = Math.round(85 + (v / 127) * 70);
       } else {
         // Shadow overlay: deep lunar night shadow that still lets LOLA/WAC craters show through
-        img.data[k] = 5;
-        img.data[k + 1] = 10;
-        img.data[k + 2] = 24;
-        img.data[k + 3] = 165;
+        img.data[k] = 4;
+        img.data[k + 1] = 9;
+        img.data[k + 2] = 28;
+        img.data[k + 3] = 200;
       }
     } else {
       if (b & 128) {
@@ -115,6 +116,17 @@ export default function SouthPoleMap(props: Props) {
     () => (illum && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
     [illum, hasTrek, showShadows],
   );
+  // Outline of every sunlit area: the edge between light and shadow, traced from the same lighting grid.
+  const sunEdge = useMemo(() => {
+    if (!illum || (hasTrek && !showShadows)) return null;
+    const bin = atob(illum.data), n = illum.res;
+    const z = new Float64Array(n * n);
+    for (let i = 0; i < n * n; i++) {
+      const b = bin.charCodeAt(i);
+      z[i] = b === 255 ? NaN : b & 128 ? 1 : 0;
+    }
+    return { d: contours(z, n, [0.5])[0], n, half: illum.half_km };
+  }, [illum, hasTrek, showShadows]);
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
 
   const toKm = (clientX: number, clientY: number) => {
@@ -212,6 +224,14 @@ export default function SouthPoleMap(props: Props) {
           />
         )}
 
+        {/* Edge of sunlight: a crisp gold line around every lit area */}
+        {sunEdge && (
+          <g clipPath="url(#south-pole-disc)" pointerEvents="none">
+            <path d={sunEdge.d} fill="none" stroke="#ffc65c" strokeWidth={1.4} vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+              transform={(() => { const s = (2 * sunEdge.half) / sunEdge.n; return `translate(${-sunEdge.half + s / 2} ${-sunEdge.half + s / 2}) scale(${s})`; })()} />
+          </g>
+        )}
+
         {/* Outer ring border */}
         <circle r={outer} fill="none" stroke="#3a4252" strokeWidth={1.2 * u} pointerEvents="none" />
 
@@ -285,13 +305,18 @@ export default function SouthPoleMap(props: Props) {
             <g key={s.id} transform={`translate(${p.x},${p.y})`} className="marker"
               onPointerUp={(e) => { if (!drag.current?.moved) { e.stopPropagation(); drag.current = null; onSelect(s.id); } }}>
               <title>{`${s.id}: ${s.name} · ${ui.word} · ${lit ? "in sunlight" : "in shadow"} · ${s.has_earth_comm ? "Earth in view" : "no Earth contact"}`}</title>
-              {lit && <circle r={12 * u} fill="var(--sun)" opacity={0.28} />}
+              {lit && <circle r={12 * u} fill="var(--sun)" opacity={0.35} stroke="#ffc65c" strokeWidth={1.2 * u} />}
               {sel && <circle r={14 * u} fill="none" stroke="#fff" strokeWidth={1.6 * u} />}
-              <rect x={-h} y={-h} width={2 * h} height={2 * h} fill={lit ? "rgba(232,163,61,0.55)" : "rgba(8,10,16,0.85)"}
+              <rect x={-h} y={-h} width={2 * h} height={2 * h} fill={lit ? "rgba(255,190,80,0.85)" : "rgba(8,10,16,0.9)"}
                 stroke={col} strokeWidth={1.8 * u} />
               <path d={`M${-h},0H${h}M0,${-h}V${h}`} stroke={col} strokeWidth={1.2 * u} />
               <text x={h + 3 * u} y={-h + 1 * u} fontSize={11 * u} fontWeight={700} fill="#fff"
                 paintOrder="stroke" stroke="#000" strokeWidth={2.5 * u}>{s.id}</text>
+              {/* sunlight badge: ☀ lit right now, ☾ in shadow */}
+              <g transform={`translate(${h + 7 * u},${h + 3 * u})`}>
+                <circle r={5.5 * u} fill={lit ? "#ffc65c" : "#0b1224"} stroke={lit ? "#7a4a00" : "#8fa3c8"} strokeWidth={0.8 * u} />
+                <text y={3 * u} textAnchor="middle" fontSize={8 * u} fill={lit ? "#5a3300" : "#cfd8ea"}>{lit ? "☀" : "☾"}</text>
+              </g>
             </g>
           );
         })}

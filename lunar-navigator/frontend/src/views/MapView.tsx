@@ -140,6 +140,8 @@ export default function MapView({ onCursor }: Props) {
           <span><i className="sq red" />NO-GO</span>
           <span><i className="sw lit" />sunlit now</span>
           <span><i className="sw dark" />shadow now</span>
+          <span><i className="sw edge" />edge of sunlight</span>
+          <span>☀ / ☾ site lit / in shadow</span>
           <span><i className="sw psr" />cold-trap crater</span>
         </div>
         <div className="muted small">

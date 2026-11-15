@@ -28,7 +28,7 @@ where it stops being trustworthy. It lives in the same place as before and keeps
 7. **Skyline strip** (`SkylineStrip.tsx`): the skyline all around the lander unrolled into a strip, with the Sun's
    and Earth's paths over the lunar day. Where a path is above the ground the body is in view. Clicking a direction
    aims the slice there; clicking a path goes to that moment.
-8. **Mini-map** (`SliceMiniMap.tsx`): a small map on the drawing itself, at the end away from the body: the
+8. **Mini-map** (`SliceMiniMap.tsx`): a small map at the top right of the panel, beside the controls: the
    terrain from above with the slice line, the body's direction and the shadows at the slider time, from
    `GET /api/terrain/shadow-map`. "Larger" enlarges it; clicking it aims the slice.
 9. **Eye height** 2, 5 or 10 m: the height of the solar panel or antenna. **Reach** 8 to 150 km each way.

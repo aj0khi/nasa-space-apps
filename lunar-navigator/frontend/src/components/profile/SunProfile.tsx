@@ -681,7 +681,6 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     : "Loading the terrain slice… the first read of a site takes a few seconds, or up to half a minute when the terrain is read from NASA.";
 
   const endA = { t: letter, right: !mirror }, endB = { t: `${letter}′`, right: mirror };
-  const mapRight = !(toA ? !mirror : mirror); // the small map goes to the end the body is NOT at
   const leftAz = mirror ? shown : shown + 180, rightAz = mirror ? shown + 180 : shown;
   const darkColor = body === "sun" ? "var(--shade)" : "var(--red)";
   const toneColor = (t: number) => (t === 1 ? view.color : t === 0 ? darkColor : "var(--muted)");
@@ -690,50 +689,63 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     <div className="panel profile">
       <h3>Cross section {letter}–{letter}′: {body === "sun" ? "sunlight" : "contact with Earth"} along a slice through the site {sec?.synthetic && <small>(synthetic terrain)</small>}</h3>
 
-      <div className="tabs" role="group" aria-label="What to check along the slice" style={{ marginBottom: 8 }}>
-        {(Object.keys(VIEW) as Body[]).map((b) => (
-          <button key={b} className={body === b ? "active" : ""} aria-pressed={body === b} onClick={() => pickBody(b)}>{VIEW[b].tab}</button>
-        ))}
-      </div>
+      <div className="profile-head">
+        <div className="profile-head-main">
+          <div className="tabs" role="group" aria-label="What to check along the slice" style={{ marginBottom: 8 }}>
+            {(Object.keys(VIEW) as Body[]).map((b) => (
+              <button key={b} className={body === b ? "active" : ""} aria-pressed={body === b} onClick={() => pickBody(b)}>{VIEW[b].tab}</button>
+            ))}
+          </div>
 
-      <div className="viewpoints profile-dir">
-        <span className="muted small">Slice direction</span>
-        <div className="tabs" role="group" aria-label="Which way the slice points">
-          <button disabled={!now} onClick={() => aim(false)} title={`Turn the slice to ${view.the} and draw it on the left`}>{view.name} on the left</button>
-          <button disabled={!now} onClick={() => aim(true)} title={`Turn the slice to ${view.the} and draw it on the right`}>{view.name} on the right</button>
-          <button className={follow ? "active" : ""} aria-pressed={follow} disabled={!now} onClick={toggleFollow}
-            title={`The slice turns with ${view.the}, so it always stays in the page. Press again to lock the slice where it is.`}>Follow {view.the}: {follow ? "on" : "off"}</button>
-          <button className={smooth ? "active" : ""} aria-pressed={smooth} onClick={() => setSmooth(!smooth)}
-            title="While following. On: the slice turns one degree at a time and the ground glides. Off: it jumps between 16 fixed directions.">Smooth turning: {smooth ? "on" : "off"}</button>
-        </div>
-        <span className="muted small">{body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}</span>
-        <div className="tabs" role="group" aria-label={body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}>
-          <button disabled={!earlier} onClick={() => earlier && goEvent(earlier)} title="Line the slice up with the event before this one">Earlier event</button>
-          <button className="profile-next" disabled={!nextSet} onClick={() => nextSet && goEvent(nextSet)}
-            title={nextSet ? `Lock the slice to where ${view.the} sets and go to ${EVENT_LEAD_H} hours before it` : `No ${evName(false)} after this moment in this lunar day`}>
-            Next {evName(false)}
-          </button>
-          <button className="profile-next" disabled={!nextRise} onClick={() => nextRise && goEvent(nextRise)}
-            title={nextRise ? `Lock the slice to where ${view.the} rises and go to ${EVENT_LEAD_H} hours before it` : `No ${evName(true)} after this moment in this lunar day`}>
-            Next {evName(true)}
-          </button>
-          <button disabled={!later} onClick={() => later && goEvent(later)} title="Line the slice up with the event after this one">Later event</button>
-        </div>
-      </div>
-      {override && (
-        <div className="override-note">Manual Sun position ({override.alt}°, {override.az}°) from Mission setup. <button className="link" onClick={() => useApp.getState().setSunOverride(null)}>Use the real Sun</button></div>
-      )}
+          <div className="viewpoints profile-dir">
+            <span className="muted small">Slice direction</span>
+            <div className="tabs" role="group" aria-label="Which way the slice points">
+              <button disabled={!now} onClick={() => aim(false)} title={`Turn the slice to ${view.the} and draw it on the left`}>{view.name} on the left</button>
+              <button disabled={!now} onClick={() => aim(true)} title={`Turn the slice to ${view.the} and draw it on the right`}>{view.name} on the right</button>
+              <button className={follow ? "active" : ""} aria-pressed={follow} disabled={!now} onClick={toggleFollow}
+                title={`The slice turns with ${view.the}, so it always stays in the page. Press again to lock the slice where it is.`}>Follow {view.the}: {follow ? "on" : "off"}</button>
+              <button className={smooth ? "active" : ""} aria-pressed={smooth} onClick={() => setSmooth(!smooth)}
+                title="While following. On: the slice turns one degree at a time and the ground glides. Off: it jumps between 16 fixed directions.">Smooth turning: {smooth ? "on" : "off"}</button>
+            </div>
+            <span className="muted small">{body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}</span>
+            <div className="tabs" role="group" aria-label={body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}>
+              <button disabled={!earlier} onClick={() => earlier && goEvent(earlier)} title="Line the slice up with the event before this one">Earlier event</button>
+              <button className="profile-next" disabled={!nextSet} onClick={() => nextSet && goEvent(nextSet)}
+                title={nextSet ? `Lock the slice to where ${view.the} sets and go to ${EVENT_LEAD_H} hours before it` : `No ${evName(false)} after this moment in this lunar day`}>
+                Next {evName(false)}
+              </button>
+              <button className="profile-next" disabled={!nextRise} onClick={() => nextRise && goEvent(nextRise)}
+                title={nextRise ? `Lock the slice to where ${view.the} rises and go to ${EVENT_LEAD_H} hours before it` : `No ${evName(true)} after this moment in this lunar day`}>
+                Next {evName(true)}
+              </button>
+              <button disabled={!later} onClick={() => later && goEvent(later)} title="Line the slice up with the event after this one">Later event</button>
+            </div>
+          </div>
+          {override && (
+            <div className="override-note">Manual Sun position ({override.alt}°, {override.az}°) from Mission setup. <button className="link" onClick={() => useApp.getState().setSunOverride(null)}>Use the real Sun</button></div>
+          )}
 
-      <div className="profile-state" aria-live="polite">
-        {stateText ? <span className="profile-state-main"><b>{stateText.b}</b>{stateText.rest}</span> : <span>Finding where {view.the} is…</span>}
-        {stale && !section.error && <span>· loading the slice toward {fmtAz(bearing!)}…</span>}
-        {stale && section.error && <span>· could not load the slice toward {fmtAz(bearing!)} ({section.error})</span>}
-        {sec && <span>· Terrain: {sec.source}</span>}
-        {sec?.synthetic && sec.note && <span>· {sec.note}</span>}
-      </div>
-      <div className="profile-event" aria-live="polite">
-        <span title={eventLine.text}>{eventLine.text}</span>
-        {eventLine.widen && !hint?.widen && <button onClick={() => pickLength(eventLine.widen!)}>Widen the slice to {eventLine.widen} km each way</button>}
+          <div className="profile-state" aria-live="polite">
+            {stateText ? <span className="profile-state-main"><b>{stateText.b}</b>{stateText.rest}</span> : <span>Finding where {view.the} is…</span>}
+            {stale && !section.error && <span>· loading the slice toward {fmtAz(bearing!)}…</span>}
+            {stale && section.error && <span>· could not load the slice toward {fmtAz(bearing!)} ({section.error})</span>}
+            {sec && <span>· Terrain: {sec.source}</span>}
+            {sec?.synthetic && sec.note && <span>· {sec.note}</span>}
+          </div>
+          <div className="profile-event" aria-live="polite">
+            <span title={eventLine.text}>{eventLine.text}</span>
+            {eventLine.widen && !hint?.widen && <button onClick={() => pickLength(eventLine.widen!)}>Widen the slice to {eventLine.widen} km each way</button>}
+          </div>
+        </div>
+        {/* the same moment from above: a small map beside the controls, just above the end of the drawing */}
+        <div className="profile-mapcol">
+          <div className={`profile-map${mapBig ? " big" : ""}`}>
+            <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
+              bodyInView={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} observerM={observerM} color={view.color}
+              onPickAzimuth={lockTo} />
+            <button className="profile-map-size" aria-pressed={mapBig} onClick={() => setMapBig(!mapBig)}>{mapBig ? "Smaller" : "Larger"}</button>
+          </div>
+        </div>
       </div>
 
       <div className="profile-frame">
@@ -835,14 +847,6 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         ) : (
           <div className="profile-loading">{loadingText}</div>
         )}
-        {/* the same moment from above: a small map in a top corner, at the end away from the body so it never covers
-            the marker or the sight line; under the 1:1 inset when that is showing at the same end */}
-        <div className={`profile-map${mapBig ? " big" : ""}${mapRight ? " at-right" : " at-left"}${mapRight === endB.right && exag !== 1 ? " low" : ""}`}>
-          <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
-            bodyInView={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} observerM={observerM} color={view.color}
-            onPickAzimuth={lockTo} />
-          <button className="profile-map-size" aria-pressed={mapBig} onClick={() => setMapBig(!mapBig)}>{mapBig ? "Smaller" : "Larger"}</button>
-        </div>
       </div>
 
       {/* hours of light per ground point over the lunar day: only from the ray-traced data */}
@@ -921,7 +925,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <span><i className="line tick" />Skyline in {view.the === "Earth" ? "Earth's" : "the Sun's"} true direction (ray traced)</span>
         <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}; printed angles are real`}{sec?.curvature ? " · Moon's curve included" : ""}</span>
       </div>
-      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote} The small map on the drawing shows the same moment from above, with shadows ray traced on the real terrain; click it to aim the slice, or press "Larger" to read it.</p>
+      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote} The small map at the top right shows the same moment from above, with shadows ray traced on the real terrain; click it to aim the slice, or press "Larger" to read it.</p>
 
       {skyline && (
         <div className="profile-source">

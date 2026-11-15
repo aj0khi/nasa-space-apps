@@ -1,5 +1,5 @@
 // Main interactive map of the lunar south pole (polar stereographic, top-down). Owner: MAP.
-// The ground is a shaded-relief image lit by the real Sun at the chosen time (from /api/illumination/polar).
+// The ground is the LRO WAC mosaic or LOLA-derived sunlit relief.
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
 import { useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
@@ -11,6 +11,7 @@ interface Props {
   sites: EvalSite[]; // A–H from the evaluation engine (GET /api/sites): status + lit right now
   features: Features | null;
   illum: Illumination | null;
+  showRelief: boolean;
   selectedId: string | null;
   custom: { lat: number; lon: number } | null;
   minLat: number; // outer edge of the map, e.g. -80
@@ -20,41 +21,38 @@ interface Props {
 }
 
 const COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
-
-/** Decode the backend's byte grid into a PNG: warm for sunlit ground, cold blue for shadow. */
-function illumToDataUrl(a: Illumination): string {
-  const bin = atob(a.data);
-  const n = a.res;
-  const c = document.createElement("canvas");
-  c.width = n;
-  c.height = n;
-  const ctx = c.getContext("2d")!;
-  const img = ctx.createImageData(n, n);
-  for (let i = 0; i < n * n; i++) {
-    const b = bin.charCodeAt(i);
-    const k = i * 4;
-    if (b === 255) { img.data[k + 3] = 0; continue; }
-    const v = b & 127;
-    if (b & 128) {
-      const g = 55 + v * 1.55; // sunlit
-      img.data[k] = Math.min(255, g * 1.08); img.data[k + 1] = g; img.data[k + 2] = g * 0.84;
-    } else {
-      const g = v * 2.4; // shadow: dim, cold
-      img.data[k] = g * 0.55; img.data[k + 1] = g * 0.68; img.data[k + 2] = 18 + g;
-    }
-    img.data[k + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  return c.toDataURL();
-}
+const TILE_ORIGIN_KM = -1095.93;
+const TILE_EXTENT_KM = 2191.86;
+const MOSAIC_URL = "https://trek.nasa.gov/tiles/Moon/SP/LRO_WAC_Mosaic_SPole60_100m_v02/1.0.0/default/default028mm";
 
 export default function SouthPoleMap(props: Props) {
-  const { sites, features, illum, selectedId, custom, minLat, onSelect, onPick, onCursor } = props;
+  const { sites, features, illum, showRelief, selectedId, custom, minLat, onSelect, onPick, onCursor } = props;
   const outer = ringRadius(minLat);
   const home = { cx: 0, cy: 0, half: outer * 1.16 };
   const [view, setView] = useState(home);
+  const [failedTiles, setFailedTiles] = useState<string[]>([]);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
+  const relief = useMemo(() => {
+    if (!showRelief || !illum || illum.synthetic) return null;
+    const bytes = atob(illum.data);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = illum.res;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Cannot render the terrain lighting image.");
+    const pixels = ctx.createImageData(illum.res, illum.res);
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes.charCodeAt(i);
+      if (b === 255) continue;
+      const value = (b & 127) * 1.6;
+      pixels.data[i * 4] = value;
+      pixels.data[i * 4 + 1] = value;
+      pixels.data[i * 4 + 2] = Math.min(255, value + (b & 128 ? 0 : 7));
+      pixels.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(pixels, 0, 0);
+    return canvas.toDataURL();
+  }, [illum, showRelief]);
 
   const lastMin = useRef(minLat);
   if (lastMin.current !== minLat) {
@@ -62,7 +60,22 @@ export default function SouthPoleMap(props: Props) {
     setView(home);
   }
 
-  const imgUrl = useMemo(() => (illum ? illumToDataUrl(illum) : null), [illum]);
+  const tiles = useMemo(() => {
+    const zoom = Math.max(0, Math.min(5, Math.floor(Math.log2(TILE_EXTENT_KM * 3 / (2 * view.half)))));
+    const count = 2 ** zoom;
+    const size = TILE_EXTENT_KM / count;
+    const startX = Math.max(0, Math.floor((view.cx - view.half - TILE_ORIGIN_KM) / size));
+    const endX = Math.min(count - 1, Math.floor((view.cx + view.half - TILE_ORIGIN_KM) / size));
+    const startY = Math.max(0, Math.floor((view.cy - view.half - TILE_ORIGIN_KM) / size));
+    const endY = Math.min(count - 1, Math.floor((view.cy + view.half - TILE_ORIGIN_KM) / size));
+    const result = [];
+    for (let row = startY; row <= endY; row++) {
+      for (let col = startX; col <= endX; col++) {
+        result.push({ zoom, row, col, x: TILE_ORIGIN_KM + col * size, y: TILE_ORIGIN_KM + row * size, size });
+      }
+    }
+    return result;
+  }, [view]);
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
 
   const toKm = (clientX: number, clientY: number) => {
@@ -87,6 +100,8 @@ export default function SouthPoleMap(props: Props) {
     <div className="polemap">
       <svg
         ref={svg}
+        role="img"
+        aria-label={showRelief ? "Lunar south pole LOLA shaded relief and landing-site markers" : "Lunar south pole photographic mosaic with landing-site markers"}
         viewBox={`${view.cx - view.half} ${view.cy - view.half} ${2 * view.half} ${2 * view.half}`}
         onWheel={(e) => {
           const p = toKm(e.clientX, e.clientY);
@@ -120,10 +135,17 @@ export default function SouthPoleMap(props: Props) {
       >
         <rect data-ground="1" x={-outer * 3} y={-outer * 3} width={outer * 6} height={outer * 6} fill="var(--map-bg)" />
         <circle data-ground="1" r={outer} fill="#1b1e26" />
-        {imgUrl && illum && (
-          <image data-ground="1" href={imgUrl} x={-illum.half_km} y={-illum.half_km}
-            width={2 * illum.half_km} height={2 * illum.half_km} preserveAspectRatio="none" />
-        )}
+        {!showRelief && tiles.map((tile) => {
+          const key = `${tile.zoom}-${tile.row}-${tile.col}`;
+          return <image key={key} data-ground="1"
+            href={`${MOSAIC_URL}/${tile.zoom}/${tile.row}/${tile.col}.png`}
+            x={tile.x} y={tile.y} width={tile.size} height={tile.size}
+            preserveAspectRatio="none"
+            onLoad={() => setFailedTiles((old) => old.includes(key) ? old.filter((item) => item !== key) : old)}
+            onError={() => setFailedTiles((old) => old.includes(key) ? old : [...old, key])} />;
+        })}
+        {relief && illum && <image href={relief} x={-illum.half_km - illum.pixel_km / 2} y={-illum.half_km - illum.pixel_km / 2}
+          width={2 * illum.half_km + illum.pixel_km} height={2 * illum.half_km + illum.pixel_km} preserveAspectRatio="none" pointerEvents="none" />}
 
         {/* sunlight direction: faint parallel rays crossing the map from the Sun's side */}
         {sun && (
@@ -223,6 +245,8 @@ export default function SouthPoleMap(props: Props) {
         <button aria-label="Zoom out" onClick={() => setView((v) => ({ ...v, half: Math.min(outer * 1.5, v.half * 1.4) }))}>－</button>
         <button aria-label="Reset view" onClick={() => setView(home)}>⟲</button>
       </div>
+      {!showRelief && tiles.some((tile) => failedTiles.includes(`${tile.zoom}-${tile.row}-${tile.col}`)) &&
+        <div role="status">Some NASA imagery tiles could not be loaded. Check your internet connection.</div>}
     </div>
   );
 }

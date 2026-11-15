@@ -88,8 +88,11 @@ class Illumination(BaseModel):
     res: int
     half_km: float
     min_lat: float
-    data: str  # base64 bytes, res×res, row 0 = top. 255 = outside map; bit 7 = sunlit; bits 0–6 = brightness
-    lit_fraction: float
+    data: str  # 255 = outside map or unknown; bit 7 = sunlit; bits 0–6 = brightness
+    lit_fraction: float | None
+    coverage_fraction: float
+    horizon_limit_km: float
+    pixel_km: float
     sun: SunInfo
     earth: EarthInfo
     synthetic: bool
@@ -114,6 +117,7 @@ class ElevationGrid(BaseModel):
 class Mask(BaseModel):
     mask: list[list[int]]
     lit_fraction: float | None = None
+    synthetic: bool
 
 
 class CrossSectionLine(BaseModel):

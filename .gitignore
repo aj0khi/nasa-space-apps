@@ -7,3 +7,4 @@ __pycache__/
 
 backend/data/kernels/
 .pytest_cache/
+/LDEM_80S_20MPP_ADJ.tiff

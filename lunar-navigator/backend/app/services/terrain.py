@@ -3,18 +3,23 @@
 Grid convention (all endpoints): row 0 = north edge, col 0 = west edge, site at the center.
 Azimuth is clockwise from north (east = +col, north = -row).
 
-Until a real LOLA DEM is in backend/data/dem/, a synthetic crater is generated so the frontend is never blocked.
+The south-pole LOLA DEM is used when available; other locations use synthetic terrain.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
+import rasterio
+from rasterio.transform import from_origin
+from rasterio.warp import Resampling, reproject
 from scipy import ndimage
 
 from app.services import polar_dem
 
 DEM_DIR = Path(__file__).resolve().parents[2] / "data" / "dem"
+LOCAL_DEM = Path(__file__).resolve().parents[4] / "LDEM_80S_20MPP_ADJ.tiff"
+MOON_RADIUS_M = 1_737_400.0
 
 
 # ---------------------------------------------------------------- elevation
@@ -36,17 +41,47 @@ def _synthetic_crater(size_km: float, res: int) -> np.ndarray:
     return bowl + rim + bumps
 
 
-def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) -> tuple[np.ndarray, bool]:
-    """Return (elevation grid in metres, is_synthetic).
-
-    TODO(TERRAIN):
-      1. Put a LOLA polar-stereographic GeoTIFF in data/dem/ (see data/README.md).
-      2. Project (lat, lon) → DEM x/y with pyproj (Moon 2015 south polar stereographic, R = 1737.4 km).
-      3. Window-read size_km × size_km around it with rasterio and resample to res × res.
-    """
-    dems = sorted(DEM_DIR.glob("*.tif")) if DEM_DIR.exists() else []
+def _dem_path() -> Path | None:
+    dems = sorted(p for p in DEM_DIR.iterdir() if p.is_file() and p.suffix.lower() in {".tif", ".tiff"}) if DEM_DIR.exists() else []
+    if len(dems) > 1:
+        raise ValueError(f"Multiple DEM files found in {DEM_DIR}; keep only one elevation DEM.")
     if dems:
-        pass  # real DEM goes here
+        return dems[0]
+    return LOCAL_DEM if LOCAL_DEM.is_file() else None
+
+
+def _read_dem(path: Path, lat: float, lon: float, size_km: float, res: int) -> np.ndarray:
+    pixel_m = pixel_size_m(size_km, res)
+    half_m = size_km * 500.0
+    local_crs = (
+        f"+proj=aeqd +lat_0={lat} +lon_0={lon} "
+        f"+R={MOON_RADIUS_M} +units=m +no_defs"
+    )
+    grid = np.full((res, res), np.nan, dtype=np.float32)
+    with rasterio.open(path) as dem:
+        if dem.count != 1 or dem.crs is None:
+            raise ValueError(f"DEM must have one elevation band and a lunar coordinate system: {path}")
+        reproject(
+            source=rasterio.band(dem, 1),
+            destination=grid,
+            src_nodata=dem.nodata,
+            dst_transform=from_origin(-half_m - pixel_m / 2, half_m + pixel_m / 2, pixel_m, pixel_m),
+            dst_crs=local_crs,
+            dst_nodata=np.nan,
+            resampling=Resampling.bilinear,
+        )
+    if not np.isfinite(grid).all():
+        raise ValueError("The requested terrain area extends beyond available DEM coverage or contains missing data.")
+    return grid
+
+
+def load_elevation(lat: float, lon: float, size_km: float = 20, res: int = 128) -> tuple[np.ndarray, bool]:
+    """Return (elevation grid in metres, is_synthetic)."""
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180 and size_km > 0 and res >= 2):
+        raise ValueError("Invalid terrain coordinates, size, or resolution.")
+    dem = _dem_path()
+    if dem is not None and lat <= -80:
+        return _read_dem(dem, lat, lon, size_km, res), False
     if polar_dem.covered(lat):
         # sample the regional south-pole model so this tile matches the 2D map exactly
         half_m = size_km * 500.0

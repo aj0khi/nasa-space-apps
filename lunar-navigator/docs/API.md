@@ -12,7 +12,8 @@ Source of truth: `backend/app/models.py` ↔ `frontend/src/types.ts`. Keep them 
 | `/api/illumination/polar`, `/api/features`, `/api/ephemeris/*`, `/api/terrain/*`, `/api/score`, `/api/mission/plan` | Map/terrain engine in `lunar-navigator/backend` | Map shading + Sun, cross section, 3D, seasons, custom points, mission plan |
 | `/api/catalog` | Other notable sites (Apollo, Chang'e, CLPS…) | not shown in the UI yet |
 
-Both engines get Sun/Earth positions from NASA JPL data and agree to ~0.01° (`tests/test_integration.py`).
+The main server connects A–H evaluation to the same LOLA terrain reader as the terrain API.
+Both ephemeris engines use JPL data and are checked for consistency (`tests/test_integration.py`).
 The A–H engine asks the **live JPL Horizons API** first; offline it uses JPL DE421 via Skyfield.
 Send it **6-hour-aligned dates** (00/06/12/18 UTC, see `sixHourKey` in the frontend) so slider moves hit its NASA cache.
 
@@ -28,6 +29,14 @@ Longitudes may be 0–360 °E (the frontend normalises with `normLon`). Status �
 
 `GET /api/sites/{id}?date=&min_duration_days=` → adds `ephemeris`, `visibility`, `window` (incl. `timeline_6h`, 121 steps ±15 d),
 `horizon_angles_deg[360]`, `terrain_features`, `slope_deg`, `roughness_m`, `ice_distance_km`, `psr_name`, `cross_section_aa`.
+
+Each site includes `terrain_source` (`LOLA` or `synthetic`) and `horizon_limit_km`
+(`50` for LOLA, otherwise null). LOLA elevations, local slope, skyline and cross-section
+come from a cached 100 km grid sampled at 200 m. The skyline uses a 2 m observer and
+approximate lunar curvature; obstacles beyond 50 km are excluded. The standalone
+root backend continues to use synthetic profiles. `roughness_m`, `ice_distance_km`,
+`psr_name`, and `terrain_features` are unverified legacy assumptions; the status and
+six-hour-sampled windows are exploratory, not validated landing guidance.
 
 `GET /api/compare?site_a=A&date_a=&site_b=C&date_b=` → `{ recommended: {scenario, site_id, key_differences…}, scenario_1, scenario_2 }`
 
@@ -66,23 +75,38 @@ The Sun's latitude on the Moon only swings ±1.54°, but at the pole that decide
 `GET /api/illumination/polar?time=&min_lat=-80&res=384` → shaded-relief image lit by the real Sun (cached per hour)
 ```json
 { "time": "2026-11-14T20:00:00+00:00", "res": 384, "half_km": 316.4, "min_lat": -80,
-  "data": "<base64 res×res bytes: 255 = outside map, bit 7 = sunlit, bits 0–6 = brightness>",
-  "lit_fraction": 0.46,
+  "data": "<base64 res×res bytes: 255 = outside or unknown, bit 7 = sunlit, bits 0–6 = brightness>",
+  "lit_fraction": 0.46, "coverage_fraction": 0.9, "horizon_limit_km": 50, "pixel_km": 1.65,
   "sun":   { "subsolar_lat": -1.56, "subsolar_lon": 116.5, "elevation_at_pole": 1.56 },
-  "earth": { "sub_lat": 5.1, "sub_lon": -3.2, "elevation_at_pole": -5.1 }, "synthetic": true }
+  "earth": { "sub_lat": 5.1, "sub_lon": -3.2, "elevation_at_pole": -5.1 }, "synthetic": false }
 ```
 Map coordinates are polar stereographic km, 0° longitude up, 90°E right (see `services/polar_dem.py`).
+`lit_fraction` is the lit share of modeled pixels, or null if none are modeled;
+`coverage_fraction` is their share of the requested map disc. With a DEM, missing
+cells and rays are unknown unless a sampled blocker already proves shadow. The
+model samples 72 distances up to 50 km, so farther blockers and subpixel features
+are omitted. It uses a coarse DEM grid, approximate curvature and hourly Sun
+positions; it is not validated mission guidance. Without a DEM the API reports
+`synthetic: true` and relief mode stays blank instead of displaying synthetic relief.
 
 `GET /api/features` → craters and massifs drawn on the map and used to build the terrain model.
 
 `windows` now also returns `sun_visible_now`, `earth_visible_now`, `terrain_horizon`, and each series point carries `sun_horizon` / `earth_horizon`.
 
 ## Terrain
+When a LOLA DEM is installed, local terrain requests at or south of 80°S use it;
+responses mark the source with `synthetic: false`. Other locations or installations
+without a DEM use synthetic terrain. Missing DEM cells within a requested tile produce
+a 422 error. See `backend/data/README.md` for setup and scientific limitations.
+The ephemeris-window skyline still uses synthetic terrain. The NASA LRO WAC photo
+mode is a fixed mosaic, not current lighting; its image shadows do not change with
+the selected date.
+
 `GET /api/terrain/elevation?lat=&lon=&size_km=20&res=128` → `{ "grid": number[][], "pixel_m": 156.25, "min": -4200, "max": 1800, "synthetic": true }`
 
-`GET /api/terrain/shadow?lat=&lon=&sun_alt=&sun_az=&size_km=20&res=128` → `{ "mask": (0|1)[][], "lit_fraction": 0.61 }` (1 = lit)
+`GET /api/terrain/shadow?lat=&lon=&sun_alt=&sun_az=&size_km=20&res=128` → `{ "mask": (0|1)[][], "lit_fraction": 0.61, "synthetic": false }` (1 = lit; blocking terrain outside the tile is not considered)
 
-`GET /api/terrain/rims?lat=&lon=&size_km=20&res=128` → `{ "mask": (0|1)[][] }`
+`GET /api/terrain/rims?lat=&lon=&size_km=20&res=128` → `{ "mask": (0|1)[][], "synthetic": false }`
 
 `POST /api/terrain/cross-section` body `{ "lat", "lon", "lines": [{ "azimuth": 0, "length_km": 10 }] }`
 → `{ "profiles": [{ "azimuth": 0, "distance_m": number[], "elevation_m": number[] }], "synthetic": true }`

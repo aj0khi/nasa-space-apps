@@ -14,12 +14,15 @@ from datetime import datetime, timezone
 from functools import lru_cache
 
 import numpy as np
+import rasterio
+from rasterio.transform import from_origin
+from rasterio.warp import reproject, Resampling
 from scipy import ndimage
 
-from app.services import ephemeris, polar_dem
+from app.services import ephemeris, polar_dem, terrain
 
 D = np.pi / 180
-MAX_RAY_KM = 220.0
+MAX_RAY_KM = 50.0
 
 
 def _utc(dt: datetime) -> datetime:
@@ -54,11 +57,41 @@ def _round_hour(when: datetime) -> str:
 
 
 def polar_illumination(when: datetime, min_lat: float = -80, res: int = 384) -> dict:
-    return _polar_illumination(_round_hour(when), float(min_lat), int(res))
+    path = terrain._dem_path()
+    if path:
+        stat = path.stat()
+        identity = (str(path), stat.st_mtime_ns, stat.st_size)
+    else:
+        identity = None
+    return _polar_illumination(_round_hour(when), float(min_lat), int(res), identity)
 
 
-@lru_cache(maxsize=256)
-def _polar_illumination(hour_iso: str, min_lat: float, res: int) -> dict:
+@lru_cache(maxsize=6)
+def _lola_grid(half_km: float, res: int, identity: tuple[str, int, int]) -> np.ndarray:
+    pixel_m = 2 * half_km * 1000 / (res - 1)
+    grid = np.full((res, res), np.nan, dtype=np.float32)
+    with rasterio.open(identity[0]) as source:
+        if source.count != 1 or source.crs is None:
+            raise ValueError(f"DEM must have one elevation band and a lunar coordinate system: {identity[0]}")
+        levels = source.overviews(1)
+        candidates = [i for i, factor in enumerate(levels) if max(source.res) * factor <= pixel_m]
+    open_options = {"overview_level": candidates[-1]} if candidates else {}
+    with rasterio.open(identity[0], **open_options) as dem:
+        target_crs = f"+proj=stere +lat_0=-90 +lon_0=0 +R={terrain.MOON_RADIUS_M} +units=m +no_defs"
+        reproject(
+            source=rasterio.band(dem, 1),
+            destination=grid,
+            src_nodata=dem.nodata,
+            dst_transform=from_origin(-half_km * 1000 - pixel_m / 2, half_km * 1000 + pixel_m / 2, pixel_m, pixel_m),
+            dst_crs=target_crs,
+            dst_nodata=np.nan,
+            resampling=Resampling.bilinear,
+        )
+    return grid
+
+
+@lru_cache(maxsize=48)
+def _polar_illumination(hour_iso: str, min_lat: float, res: int, identity: tuple[str, int, int] | None) -> dict:
     when = datetime.fromisoformat(hour_iso)
     half = polar_dem.ring_radius(min_lat) * 1.04
     px_km = 2 * half / (res - 1)
@@ -66,7 +99,16 @@ def _polar_illumination(hour_iso: str, min_lat: float, res: int) -> dict:
     # DEM with a margin so rays can see mountains just off the map edge
     margin = int(np.ceil(MAX_RAY_KM / px_km))
     big_res = res + 2 * margin
-    bx, by, bz = polar_dem.grid(round(half + margin * px_km, 6), big_res)
+    big_half = half + margin * px_km
+    if identity is None:
+        bx, by, bz = polar_dem.grid(round(big_half, 6), big_res)
+    else:
+        v = np.linspace(-big_half, big_half, big_res)
+        bx, by = np.meshgrid(v, v)
+        bz = _lola_grid(big_half, big_res, identity)
+    valid = np.isfinite(bz)
+    valid_float = valid.astype(np.float32)
+    safe_bz = np.where(valid, bz, 0)
     z = bz[margin:margin + res, margin:margin + res]
     x = bx[margin:margin + res, margin:margin + res]
     y = by[margin:margin + res, margin:margin + res]
@@ -83,24 +125,32 @@ def _polar_illumination(hour_iso: str, min_lat: float, res: int) -> dict:
     rows += margin
     cols += margin
     horizon = np.full(z.shape, -np.inf)
+    complete = valid[margin:margin + res, margin:margin + res].copy()
+    z_safe = np.where(np.isfinite(z), z, 0)
     for d in np.geomspace(px_km * 0.8, MAX_RAY_KM, 72):
-        zs = ndimage.map_coordinates(bz, [rows + dy * d / px_km, cols + dx * d / px_km], order=1, mode="nearest")
+        ray = [rows + dy * d / px_km, cols + dx * d / px_km]
+        sample_valid = ndimage.map_coordinates(valid_float, ray, order=1, mode="constant", cval=0) > 0.999
+        zs = ndimage.map_coordinates(safe_bz, ray, order=1, mode="constant", cval=0)
         dm = d * 1000
-        horizon = np.maximum(horizon, (zs - z) / dm - dm / (2 * polar_dem.R_MOON_KM * 1000))
+        angle = (zs - z_safe) / dm - dm / (2 * polar_dem.R_MOON_KM * 1000)
+        horizon = np.maximum(horizon, np.where(sample_valid, angle, -np.inf))
+        complete &= sample_valid
     # no "elev > 0" test: from a peak the skyline is below the flat horizon (the Moon curves away),
     # so summits keep seeing a Sun that has already set for the flat ground around them
     lit = tan_e > horizon
+    gradient_valid = ndimage.binary_erosion(valid)[margin:margin + res, margin:margin + res]
+    known = inside & gradient_valid & (complete | ~lit)
 
     # how squarely each slope faces the Sun, and a fixed hillshade so shadowed terrain stays readable
-    gy, gx = np.gradient(z, px_km * 1000)
+    gy, gx = np.gradient(z_safe, px_km * 1000)
     norm = np.sqrt(gx ** 2 + gy ** 2 + 1)
     ce = np.cos(elev)
     facing = (-gx * dx * ce - gy * dy * ce + np.sin(elev)) / norm
-    ambient = np.clip((-gx * -0.5 - gy * -0.6 + 0.62) / norm, 0, 1)
+    ambient = np.clip(0.55 + (-gx * -0.5 - gy * -0.6) * 3, 0, 1)
 
-    b = np.where(lit, 40 + 86 * np.clip(facing / 0.3, 0, 1), 4 + 30 * ambient).astype(np.uint8)
+    b = np.where(lit, 48 + 78 * np.clip(facing / 0.2, 0, 1), 10 + 35 * ambient).astype(np.uint8)
     byte = np.where(lit, b | 128, b).astype(np.uint8)
-    byte[~inside] = 255  # outside the map disc → transparent
+    byte[~known] = 255  # outside the map or insufficient terrain coverage
 
     e_dir, e_lat, e_lon = body_direction(when, "earth")
     return {
@@ -109,8 +159,11 @@ def _polar_illumination(hour_iso: str, min_lat: float, res: int) -> dict:
         "half_km": half,
         "min_lat": min_lat,
         "data": base64.b64encode(byte.tobytes()).decode(),
-        "lit_fraction": float(lit[inside].mean()),
+        "lit_fraction": float(lit[known].mean()) if known.any() else None,
+        "coverage_fraction": float(known[inside].mean()),
+        "horizon_limit_km": MAX_RAY_KM,
+        "pixel_km": px_km,
         "sun": {"subsolar_lat": sub_lat, "subsolar_lon": sub_lon, "elevation_at_pole": -sub_lat},
         "earth": {"sub_lat": e_lat, "sub_lon": e_lon, "elevation_at_pole": -e_lat},
-        "synthetic": True,
+        "synthetic": identity is None,
     }

@@ -10,7 +10,7 @@ and rims, and whether the site/date gives enough **power** (sunlight) and **comm
 ## The story we tell (demo flow)
 
 1. **Pick a site.** Choose Apollo 11, Chandrayaan‑3, a south‑pole Artemis candidate, or type your own coordinates.
-2. **Pick a date.** It fills in today's date by default. Drag the **sun slider** and watch shadows sweep across craters.
+2. **Pick a date.** Drag the **sun slider** to explore modeled lighting. The photographic map is a fixed mosaic, not live imagery.
 3. **Why rims?** Split view: the crater floor stays dark and holds ice, while the rim keeps sunlight. That's why we land on rims.
 4. **Can we operate?** The status badge turns green, yellow or red based on power and comms windows, with a countdown to sunset and Earthset.
 5. **Compare.** Put 2–3 sites side by side and see the trade‑offs.
@@ -36,8 +36,14 @@ The rail (A–H GO / NO-GO, windows, resources, cautions) and the Compare tab co
 evaluation engine in `/backend` (see `/system_arch.md`); `app/routers/evaluation.py` mounts it in this server,
 so the frontend talks to a single API. `python backend/main.py` still runs that engine on its own.
 
-The backend works **offline from day 1**. If no real DEM is downloaded, `terrain.py` creates a fake crater so the
-frontend team is never blocked.
+The local terrain API and A–H evaluations on the main server read the same LOLA DEM
+when installed; otherwise they report synthetic terrain. The 2D map offers
+LOLA-derived sunlit relief whose estimated shadows follow the date slider, plus
+NASA Moon Trek's fixed LRO WAC photographic mosaic. Unmodeled relief areas are
+blank rather than filled with the photo. The topographic view switches between a
+contour map and its A–A′ profile instead of displaying them together. Scores, shadows and windows are exploratory,
+not validated landing guidance.
+See [backend/data/README.md](backend/data/README.md) for DEM setup and limitations.
 
 ## Quick start
 

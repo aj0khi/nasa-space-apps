@@ -1,9 +1,10 @@
-// Local 20 km map around the site, with tabs: Sun position / Shadows / Rims. Owner: MAP.
+// Local 20 km map around the site, with tabs: Sun position / Shadows / Rims + NASA Moon Trek imagery. Owner: MAP.
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
 import { destination, fmtLat, fmtLon } from "../../lib/geo";
+import { renderSiteTrekCanvas } from "../../lib/moontrek";
 import { go } from "../../router";
 import { MapTab, useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
@@ -23,6 +24,7 @@ export default function LocalMap() {
   const loc = useApp((s) => s.location());
   const key = loc ? `${loc.lat},${loc.lon}` : "";
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [trekCanvas, setTrekCanvas] = useState<HTMLCanvasElement | null>(null);
 
   const elev = useApi(() => (loc ? api.elevation(loc) : null), [key]);
   const state = useApi(() => (loc ? api.state(loc, time.toISOString()) : null), [key, time.getTime()]);
@@ -33,13 +35,33 @@ export default function LocalMap() {
   );
   const rims = useApi(() => (loc && tab === "rims" ? api.rims(loc) : null), [key, tab]);
 
+  // Load real NASA Moon Trek WMTS tile for this 20 km × 20 km region
+  useEffect(() => {
+    if (!loc) {
+      setTrekCanvas(null);
+      return;
+    }
+    let cancelled = false;
+    renderSiteTrekCanvas(loc.lat, loc.lon, SIZE_KM, "lola_shade", 256)
+      .then((c) => {
+        if (!cancelled) setTrekCanvas(c);
+      })
+      .catch(() => {
+        if (!cancelled) setTrekCanvas(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+
   useEffect(() => {
     if (!canvas.current || !elev.data) return;
     drawGrid(canvas.current, elev.data.grid, elev.data.pixel_m, {
       shadow: tab === "shadows" ? shadow.data?.mask : undefined,
       rims: tab === "rims" ? rims.data?.mask : undefined,
+      trekCanvas,
     });
-  }, [elev.data, shadow.data, rims.data, tab]);
+  }, [elev.data, shadow.data, rims.data, tab, trekCanvas]);
 
   // Pointer → position on the tile. Grid convention (terrain.py): row 0 = north edge, col 0 = west edge, site at the center.
   const [hover, setHover] = useState<{ lat: number; lon: number; km: number } | null>(null);
@@ -55,7 +77,12 @@ export default function LocalMap() {
   const current = TABS.find((t) => t.key === tab)!;
   return (
     <div className="panel" style={{ flex: 1, minWidth: 360 }}>
-      <h3>Site map {elev.data?.synthetic && <small>(synthetic terrain)</small>}</h3>
+      <h3>
+        Site map{" "}
+        <small className="muted">
+          {trekCanvas ? "(NASA Moon Trek LOLA/WAC + terrain)" : elev.data?.synthetic ? "(synthetic terrain)" : ""}
+        </small>
+      </h3>
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t.key} className={t.key === tab ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>
@@ -64,7 +91,7 @@ export default function LocalMap() {
       <div style={{ position: "relative", marginTop: 8, cursor: "crosshair" }} title="Click to move the site here"
         onMouseMove={(e) => setHover(at(e))} onMouseLeave={() => setHover(null)}
         onClick={(e) => { const p = at(e); if (p) go.point(p.lat, p.lon); }}>
-        <canvas ref={canvas} style={{ width: "100%", display: "block", imageRendering: "pixelated", aspectRatio: "1" }} />
+        <canvas ref={canvas} style={{ width: "100%", display: "block", imageRendering: "auto", aspectRatio: "1" }} />
         {/* the site (lander) sits at the center of the tile */}
         <svg viewBox="-12 -12 24 24" width={26} aria-label="Landing site"
           style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
@@ -89,7 +116,6 @@ export default function LocalMap() {
         {hover ? `${fmtLat(hover.lat)}, ${fmtLon(hover.lon)} · ${hover.km.toFixed(1)} km from the site · click to move the site here`
           : `⊕ = landing site · tile is ${SIZE_KM} km across · hover for coordinates, click to move the site`}
       </div>
-      {/* TODO(MAP): global Moon view (Moon Trek tiles) */}
     </div>
   );
 }

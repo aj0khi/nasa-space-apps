@@ -16,6 +16,7 @@ import CoordsBar, { GoToPoint } from "./components/rail/CoordsBar";
 import { ExpertOnly } from "./components/learn/ModeGate";
 import MissionSetup from "./components/rail/MissionSetup";
 import Conditions from "./components/rail/Conditions";
+import SiteSystems from "./components/rail/SiteSystems";
 import { useApi } from "./hooks/useApi";
 import { sixHourKey, useLatest } from "./hooks/useLatest";
 import { go, useRoute, Route, View } from "./router";
@@ -113,6 +114,7 @@ function Navigator({ route }: { route: Route }) {
         <SelectedSite key={`selected:${selectionKey}`} loading={details.loading} catalogSite={catalogReady ? catalogSite : undefined}
           catalogPending={!!route.catalog && !catalogReady} catalogError={catalog.error ?? (catalog.data && !catalogSite ? "Site not found in the catalog." : null)} />
         {(!route.catalog || catalogReady) && <Conditions key={`conditions:${selectionKey}`} />}
+        {(!route.catalog || catalogReady) && <SiteSystems key={`systems:${selectionKey}`} />}
         <ExpertOnly><GoToPoint /></ExpertOnly>
         <CoordsBar cursor={cursor} />
       </aside>

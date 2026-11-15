@@ -1,9 +1,9 @@
 // Split view: crater floor (shadows) next to rims at the same instant. Owner: MAP.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useApi } from "../../hooks/useApi";
 import { useApp } from "../../state/store";
-import { drawGrid } from "./gridCanvas";
+import { drawGrid, drawLitRelief, isEmptyMask, litRows } from "./gridCanvas";
 
 export default function SplitView() {
   const time = useApp((s) => s.time);
@@ -12,18 +12,26 @@ export default function SplitView() {
   const left = useRef<HTMLCanvasElement>(null);
   const right = useRef<HTMLCanvasElement>(null);
 
-  const elev = useApi(() => (loc ? api.elevation(loc, 20, 96) : null), [key]);
+  const elev = useApi(() => (loc ? api.elevation(loc, 20, 256) : null), [key]);
   const state = useApi(() => (loc ? api.state(loc, time.toISOString()) : null), [key, time.getTime()], 300);
   const sun = state.data?.sun;
-  const shadow = useApi(() => (loc && sun ? api.shadow(loc, sun.altitude, sun.azimuth, 20, 96) : null),
-    [key, sun?.altitude, sun?.azimuth], 300);
-  const rims = useApi(() => (loc ? api.rims(loc, 20, 96) : null), [key]);
+  // Real LOLA terrain: the same lighting as the site map (shadows from up to 40 km away). Modelled terrain: as before.
+  const real = !!elev.data && !elev.error && !elev.data.synthetic;
+  const light = useApi(() => (loc && sun && real ? api.lighting(loc, sun.altitude, sun.azimuth, 20, 256) : null),
+    [key, real, sun?.altitude, sun?.azimuth], 300);
+  const shadow = useApi(() => (loc && sun && elev.data?.synthetic ? api.shadow(loc, sun.altitude, sun.azimuth, 20, 128) : null),
+    [key, elev.data?.synthetic, sun?.altitude, sun?.azimuth], 300);
+  const litMask = useMemo(() => (real && light.data && !light.error ? litRows(light.data) : shadow.data?.mask), [real, light.data, light.error, shadow.data]);
+  const rims = useApi(() => (loc ? api.rims(loc, 20, 256) : null), [key]);
 
   useEffect(() => {
     if (!elev.data) return;
-    if (left.current) drawGrid(left.current, elev.data.grid, elev.data.pixel_m, { shadow: shadow.data?.mask });
-    if (right.current) drawGrid(right.current, elev.data.grid, elev.data.pixel_m, { rims: rims.data?.mask });
-  }, [elev.data, shadow.data, rims.data]);
+    if (left.current) {
+      if (real && light.data && !light.error) drawLitRelief(left.current, light.data, 512, "shadows");
+      else drawGrid(left.current, elev.data.grid, elev.data.pixel_m, { shadow: shadow.data?.mask, outPx: 512 });
+    }
+    if (right.current) drawGrid(right.current, elev.data.grid, elev.data.pixel_m, { rims: rims.data?.mask, outPx: 512 });
+  }, [elev.data, shadow.data, rims.data, real, light.data, light.error]);
 
   // Same spot highlighted on both halves (fractions 0..1 of the tile, so it survives resizing).
   const [cross, setCross] = useState<{ fx: number; fy: number } | null>(null);
@@ -52,14 +60,14 @@ export default function SplitView() {
     const col = Math.min(m[0].length - 1, Math.max(0, Math.floor(cross.fx * m[0].length)));
     return m[row][col];
   };
-  const lit = cell(shadow.data?.mask), rim = cell(rims.data?.mask), z = cell(elev.data?.grid);
+  const lit = cell(litMask), rim = cell(rims.data?.mask), z = cell(elev.data?.grid);
 
   return (
     <div className="panel" style={{ flex: 1, minWidth: 320 }}>
       <h3>Craters vs rims</h3>
       <div style={{ display: "flex", gap: 8 }}>
         {half(left, "Light & shadow")}
-        {half(right, "Rims")}
+        {half(right, isEmptyMask(rims.data?.mask) ? "Rims: none within 10 km" : "Rims")}
       </div>
       <div className="muted small" aria-live="polite">
         {cross

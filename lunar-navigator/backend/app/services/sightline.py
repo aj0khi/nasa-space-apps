@@ -66,10 +66,13 @@ _GDAL_ENV = dict(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", GDAL_HTTP_MAX_RETRY="
 # ---------------------------------------------------------------- where the DEM is
 def dem_target() -> str | None:
     """Path or /vsicurl/ URL of the DEM to read, or None when there is none."""
-    local = terrain._dem_path()
+    remote_ok = os.environ.get("LOLA_REMOTE", "1") != "0"
+    local = terrain._dem_path()  # a local file, or (since the streamed-DEM change) the NASA file as a /vsicurl/ path
     if local is not None:
-        return str(local)
-    if os.environ.get("LOLA_REMOTE", "1") != "0":
+        if not str(local).startswith("/vsicurl/") or remote_ok:
+            return str(local)
+        return None
+    if remote_ok:
         return "/vsicurl/" + os.environ.get("LOLA_DEM_URL", DEFAULT_DEM_URL)
     return None
 
@@ -377,6 +380,7 @@ def skyline(lat: float, lon: float, observer_m: float | None = None) -> dict:
 # ---------------------------------------------------------------- section (the slice)
 def _synthetic_section(lat: float, lon: float, azimuth: float, length_km: float, reason: str) -> dict:
     size_km = max(2 * length_km, 2)
+    lon = ((lon + 180.0) % 360.0) - 180.0  # terrain.load_elevation only takes -180..180
     grid, _ = terrain.load_elevation(lat, lon, size_km, 256)
     px = terrain.pixel_size_m(size_km, 256)
     df, ef = terrain.cross_section(grid, px, azimuth, length_km)

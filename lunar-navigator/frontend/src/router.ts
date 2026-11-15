@@ -2,12 +2,13 @@
 //   #/2d                          south pole map
 //   #/section?site=shackleton_rim cross section of a site
 //   #/3d?lat=-89.5&lon=10         3D view of any clicked point
+//   #/explore?site=A              walk the surface on foot around a site
 import { useEffect, useState } from "react";
 
-export type View = "home" | "2d" | "section" | "3d" | "compare";
+export type View = "home" | "2d" | "section" | "3d" | "compare" | "explore";
 export interface Route { view: View; site?: string; catalog?: string; lat?: number; lon?: number }
 
-const VIEWS: View[] = ["home", "2d", "section", "3d", "compare"];
+const VIEWS: View[] = ["home", "2d", "section", "3d", "compare", "explore"];
 
 export function parseHash(hash: string): Route {
   const [path, query = ""] = hash.replace(/^#\/?/, "").split("?");

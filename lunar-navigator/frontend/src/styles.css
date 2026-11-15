@@ -272,6 +272,9 @@ input[type="range"]:disabled { opacity: 0.45; }
 .ms a { color: inherit; text-decoration: none; }
 .ms a:focus-visible, .ms button:focus-visible { outline: 1px solid var(--ms-accent); outline-offset: 4px; }
 .sp-logo { display: block; flex: none; background: currentColor; mask: var(--sp-logo) 50% 47% / 107.6% auto no-repeat luminance; }
+.sp-logo-wrap { display: inline-flex; align-items: flex-end; gap: 5px; }
+.ai-mark { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 7px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; color: currentColor; opacity: 0.22; white-space: nowrap; user-select: none; transition: opacity .2s; }
+.ai-mark:hover, a:hover .ai-mark { opacity: 0.6; }
 
 .ms-header { position: absolute; inset: 0 0 auto; z-index: 5; display: flex; align-items: center; gap: 24px; padding: 26px clamp(16px, 4vw, 56px); }
 .ms-brand { display: inline-flex; align-items: center; }
@@ -317,12 +320,13 @@ input[type="range"]:disabled { opacity: 0.45; }
 .ms-dots.l i + i { opacity: .4; }
 .ms-dots.r i:first-child { opacity: .4; }
 
-.ms-moon { position: absolute; left: 50%; top: 51%; width: min(150vw, 1500px); aspect-ratio: 1; transform: translateX(-50%); z-index: 1; animation: ms-rise 2.2s .2s cubic-bezier(.2,.7,.2,1) both; }
-.ms-moon-fallback { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #777, #222 60%); width: min(110vw, 1100px); }
-@keyframes ms-rise { from { opacity: 0; translate: 0 8%; } to { opacity: 1; translate: 0 0; } }
+.ms-moon { position: absolute; left: 50%; top: 51%; width: min(150vw, 1500px); aspect-ratio: 1; transform: translateX(-50%); z-index: 1; }
+/* Moon and glow stay hidden until the textured Moon is drawn, then rise in together (no empty outline first). */
+.ms-moon, .ms-moon-glow { opacity: 0; translate: 0 8%; transition: opacity 2.2s cubic-bezier(.2,.7,.2,1), translate 2.2s cubic-bezier(.2,.7,.2,1); }
+.moon-ready .ms-moon, .moon-ready .ms-moon-glow { opacity: 1; translate: 0 0; }
 .ms-moon-glow { position: absolute; left: 50%; top: 55%; width: min(105vw, 1050px); aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%; z-index: 0; box-shadow: 0 -30px 160px rgba(255,255,255,0.12); pointer-events: none; }
 
-.ms-hero-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 24px; padding: 120px clamp(16px, 6vw, 96px) 40px; background: linear-gradient(transparent, rgba(5,5,6,.92) 55%); }
+.ms-hero-foot { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 24px; padding: 120px clamp(16px, 6vw, 96px) 40px; background: linear-gradient(transparent, rgba(5,5,6,.85) 50%, var(--ms-bg) 100%); }
 .ms-hero-foot h2 { margin: 0 0 6px; font-size: 11px; font-weight: 600; }
 .ms-hero-foot p { margin: 0; color: var(--ms-dim); font-size: 13px; line-height: 1.5; max-width: 26ch; }
 .ms-hero-foot > div:last-child { text-align: right; justify-self: end; }
@@ -341,7 +345,7 @@ input[type="range"]:disabled { opacity: 0.45; }
 .ms-btn.ghost::before, .ms-btn.ghost::after { border-color: var(--ms-dim); }
 
 /* Guide */
-.ms-guide { position: relative; padding: clamp(72px, 10vw, 140px) clamp(16px, 6vw, 96px) clamp(56px, 8vw, 110px); border-top: 1px solid var(--ms-line); }
+.ms-guide { position: relative; padding: clamp(72px, 10vw, 140px) clamp(16px, 6vw, 96px) clamp(56px, 8vw, 110px); }
 .ms-guide-head { display: grid; grid-template-columns: 1fr auto; gap: 18px 40px; align-items: end; margin-bottom: 48px; }
 .ms-eyebrow { color: var(--ms-accent); margin: 0; grid-column: 1 / -1; }
 .ms-guide h2 { margin: 0; font-size: clamp(2rem, 1.2rem + 3vw, 4rem); font-weight: 900; line-height: .95; text-transform: uppercase; font-stretch: 120%; font-variation-settings: "wdth" 120; letter-spacing: -0.01em; }
@@ -385,7 +389,8 @@ input[type="range"]:disabled { opacity: 0.45; }
   .ms-footer { flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ms-title h1, .ms-moon, .ms-steps li, .ms-live b { animation: none; }
+  .ms-title h1, .ms-steps li, .ms-live b { animation: none; }
+  .ms-moon, .ms-moon-glow { transition: none; translate: 0 0; }
 }
 
 /* SouthPoint visual system shared by every navigator view. */
@@ -397,7 +402,6 @@ input[type="range"]:disabled { opacity: 0.45; }
 }
 .shell .topbar { background: var(--bg); border-color: var(--line); }
 .shell .brand { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; }
-.shell .brand::before { content: ""; width: 1.5em; aspect-ratio: 1; margin-inline-end: 0.75em; border: 1px solid currentColor; border-radius: 50%; box-shadow: inset -0.45em 0 0 currentColor; }
 .shell .topbar > .muted { font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; }
 .shell button {
   background: rgba(255, 255, 255, 0.025);
@@ -455,6 +459,40 @@ input[type="range"]:disabled { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) {
   .shell button { transition: none; }
 }
+
+/* Beginner: Moon phases as reference dates (Date panel) */
+.moonphases { margin-top: 12px; }
+.moonphases-label { display: block; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.moonphases-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.moonphases-row button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px 6px; min-width: 0; text-transform: none; letter-spacing: normal; }
+.moonphase-icon { font-size: 20px; line-height: 1; }
+.moonphase-name { font-size: 10px; line-height: 1.2; text-align: center; color: var(--text); }
+.moonphase-date { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.moonphases-row button.active { border-color: var(--accent); }
+.moonphases-row button.active .moonphase-date { color: var(--accent); }
+
+/* Expert: go to coordinates */
+.goto-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.goto-form label { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.goto-form input { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.goto-form input[aria-invalid="true"] { border-color: var(--red); }
+.goto-form button { padding: 7px 14px; }
+.goto-hint { margin: 6px 0 0; }
+
+/* Explore on foot: lander marker (subtle, constant size, always visible) */
+.site-beacon { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; color: rgba(236, 238, 232, 0.78); }
+.site-beacon > * { position: absolute; left: 0; top: 0; }
+.site-beacon .sb-glyph { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); translate: -50% -100%; animation: sb-hover 2.6s ease-in-out infinite; transform-origin: 50% 50%; }
+.site-beacon .sb-label { translate: -50% calc(-100% - 16px); white-space: nowrap; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.02em; padding: 2px 6px; background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(236, 238, 232, 0.18); }
+.site-beacon.edge .sb-glyph { translate: -50% -50%; animation: none; }
+.site-beacon.edge .sb-label { translate: -50% 12px; }
+@keyframes sb-hover { 0%, 100% { margin-top: 0; } 50% { margin-top: -3px; } }
+@media (prefers-reduced-motion: reduce) { .site-beacon .sb-glyph { animation: none; } }
+
+/* Power · thermal · comms (rail) */
+.systems-grid { grid-template-columns: 1fr 1fr; margin-bottom: 10px; }
+.systems-grid .span2 { grid-column: 1 / -1; }
+.systems .cond-list li.muted { font-size: 12px; line-height: 1.45; }
 
 /* ---- Cross-section overhaul (LEAD): fixed slice directions, ray-traced answer, sight line. Additive. ---- */
 .profile-state { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 2px 0 6px; font-size: 13px; color: var(--muted); }

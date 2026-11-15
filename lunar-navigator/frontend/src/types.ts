@@ -86,6 +86,9 @@ export interface Season {
 export interface ElevationGrid { grid: number[][]; pixel_m: number; min: number; max: number; synthetic: boolean }
 export interface Mask { mask: number[][]; lit_fraction?: number | null; synthetic: boolean }
 
+/** Sunlight on a terrain tile: base64 of res×res bytes, row 0 = north; bit 7 = sunlit, bits 0-6 = brightness. */
+export interface LitRelief { res: number; pixel_m: number; data: string; lit_fraction: number; horizon_reach_km: number; synthetic: boolean }
+
 export interface Profile { azimuth: number; distance_m: number[]; elevation_m: number[] }
 
 /** GET /terrain/skyline: ray-traced terrain skyline seen from the lander (owner: LEAD). */
@@ -325,4 +328,12 @@ export interface ShadowMap {
   synthetic: boolean;
   source: string;
   note?: string | null;
+}
+
+/** GET /api/terrain/psr: NASA LOLA permanently-shadowed-region map on the /elevation grid (cell = shadowed fraction 0..1). */
+export interface PsrGrid {
+  available: boolean;
+  mask: number[][] | null;
+  psr_fraction: number | null;
+  source: string | null;
 }

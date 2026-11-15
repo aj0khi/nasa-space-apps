@@ -1,5 +1,5 @@
 // SouthPoint homepage: spinning Moon hero, then a Beginner / Expert quick guide, then into the navigator.
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import Logo from "../components/home/Logo";
 import { useApp } from "../state/store";
 
@@ -42,6 +42,8 @@ export default function HomeView() {
   }, []);
   const utc = clock.toISOString().slice(0, 19).replace("T", " ");
   const guide = GUIDE[track];
+  const [moonReady, setMoonReady] = useState(false);
+  const onMoonReady = useCallback(() => setMoonReady(true), []);
 
   return (
     <div className="ms">
@@ -55,7 +57,7 @@ export default function HomeView() {
         <span className="ms-mono ms-clock">{utc} UTC</span>
       </header>
 
-      <section className="ms-hero">
+      <section className={`ms-hero${moonReady ? " moon-ready" : ""}`}>
         <div className="ms-grid-bg" aria-hidden="true" />
         <div className="ms-ruler" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => <i key={i} className={i % 5 === 0 ? "long" : ""} />)}</div>
         <span className="ms-coords ms-mono" aria-hidden="true">−89.54° S · 0.00° E · SHACKLETON</span>
@@ -78,8 +80,8 @@ export default function HomeView() {
           <span className="ms-dots l"><i /><i /></span><span className="ms-dots r"><i /><i /></span>
         </div>
 
-        <Suspense fallback={<div className="ms-moon ms-moon-fallback" />}>
-          <MoonGlobe className="ms-moon" />
+        <Suspense fallback={null}>
+          <MoonGlobe className="ms-moon" onReady={onMoonReady} />
         </Suspense>
         <div className="ms-moon-glow" aria-hidden="true" />
 

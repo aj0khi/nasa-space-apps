@@ -1,5 +1,5 @@
 // 2D tab: the south pole map powered by NASA Moon Trek WMTS tiles + live Sun illumination, plus Topographic view. Owner: MAP.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SouthPoleMap from "../components/map/SouthPoleMap";
 import TopoView from "../components/map/TopoView";
 import ExplainCard from "../components/learn/ExplainCard";
@@ -36,14 +36,20 @@ export default function MapView({ onCursor }: Props) {
   const [minLat, setMinLat] = useState(-80);
   const [look, setLook] = useState<"lit" | "topo">("lit");
   const [trekLayer, setTrekLayer] = useState<TrekLayerId>("lola_shade");
-  const [showShadows, setShowShadows] = useState(false);
+  const [showShadows, setShowShadows] = useState(true);
+  const [resolution, setResolution] = useState(256);
+  const [retry, setRetry] = useState(0);
 
   const features = useApi(() => api.features(), [], 0);
   const hour = hourKey(time);
-  const illum = useLatest(() => (look === "lit" ? api.illumination(hour, minLat, 512) : null), `${hour}|${minLat}|${look}`);
+  const illum = useLatest(() => (look === "lit" ? api.illumination(hour, minLat, resolution) : null), `${hour}|${minLat}|${look}|${resolution}|${retry}`);
+  useEffect(() => {
+    if (illum.data && !illum.data.synthetic) setResolution(512);
+  }, [illum.data]);
   const a = !illum.error && illum.data && illum.data.min_lat === minLat ? illum.data : null;
   const simulatedView = trekLayer === "none" && a?.synthetic;
-  const showsLighting = a && (trekLayer === "none" || (showShadows && !a.synthetic));
+  const simulatedOverlay = trekLayer !== "none" && showShadows && a?.synthetic;
+  const showsLighting = a && (trekLayer === "none" || showShadows);
 
   const lookSwitch = (
     <div className="tabs" role="group" aria-label="Map type">
@@ -84,7 +90,7 @@ export default function MapView({ onCursor }: Props) {
             <label
               className="tabs"
               style={{ padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 12 }}
-              title="Overlay estimated terrain shadows on NASA Moon Trek imagery"
+              title="Overlay estimated lighting on NASA Moon Trek imagery"
             >
               <input
                 type="checkbox"
@@ -92,7 +98,7 @@ export default function MapView({ onCursor }: Props) {
                 onChange={(e) => setShowShadows(e.target.checked)}
                 style={{ margin: 0 }}
               />
-              Modeled shadows
+              Sunlight overlay
             </label>
           )}
         </div>
@@ -102,10 +108,10 @@ export default function MapView({ onCursor }: Props) {
         <div className="sunbox">
           <span className="sundot" />
           {a ? <span><b>Sun {a.sun.elevation_at_pole >= 0 ? "+" : ""}{a.sun.elevation_at_pole.toFixed(1)}°</b> at pole
-            {showsLighting && a.lit_fraction !== null && <> · <b>{Math.round(a.lit_fraction * 100)}%</b> {simulatedView ? "simulated" : "modeled"} area lit</>}
+            {showsLighting && a.lit_fraction !== null && <> · <b>{Math.round(a.lit_fraction * 100)}%</b> {simulatedView || simulatedOverlay ? "simulated" : "modeled"} area lit</>}
             {" · "}{fmtUtc(a.time)}{mode === "expert" && <> · subsolar {fmtLon(a.sun.subsolar_lon)}, {a.sun.subsolar_lat.toFixed(2)}°</>}
           </span> : <span className="muted">{illum.error ? "Lighting unavailable." : "Lighting the terrain…"}</span>}
-          {illum.loading && a && <span className="spinner" aria-label="updating" />}
+          {illum.loading && a && <><span className="spinner" aria-label="updating" /><span>Updating map…</span></>}
         </div>
       </div>
 
@@ -129,8 +135,8 @@ export default function MapView({ onCursor }: Props) {
           <span><i className="sq yellow" />CAUTION</span>
           <span><i className="sq red" />NO-GO</span>
           {showsLighting && <>
-            <span><i className="sw lit" />{simulatedView ? "simulated sunlight" : "estimated sunlight"}</span>
-            <span><i className="sw dark" />{simulatedView ? "simulated shadow" : "estimated shadow"}</span>
+            <span><i className="sw lit" />{simulatedView || simulatedOverlay ? "simulated sunlight" : "estimated sunlight"}</span>
+            <span><i className="sw dark" />{simulatedView || simulatedOverlay ? "simulated shadow" : "estimated shadow"}</span>
           </>}
           <span><i className="sw psr" />cold-trap crater</span>
         </div>
@@ -147,12 +153,15 @@ export default function MapView({ onCursor }: Props) {
           Estimated lighting: {a.pixel_km.toFixed(1)} km pixels, {a.horizon_limit_km} km shadow range;
           {" "}{Math.round(a.coverage_fraction * 100)}% of map modeled. Unknown areas are not shaded.
         </div>}
-        {a?.synthetic && trekLayer !== "none" && showShadows && <div className="muted small" role="status">
-          LOLA elevation is unavailable; shadows cannot be overlaid on imagery. Choose Simulated shadows for an illustrative model.
+        {simulatedOverlay && <div className="muted small">
+          Shadows use simulated terrain, not LOLA elevation. They are illustrative and may not align with real features.
         </div>}
         <div className="muted small">Moon Trek image lighting is fixed; its photographed shadows do not move.</div>
         <div className="muted small">Site ratings are exploratory, not validated landing guidance.</div>
-        {illum.error && <div className="error" role="status">Terrain lighting unavailable: {illum.error}</div>}
+        {illum.error && <div className="error" role="status">
+          Terrain lighting unavailable: {illum.error}{" "}
+          <button onClick={() => setRetry((n) => n + 1)}>Try again</button>
+        </div>}
         {mode === "beginner" && (
           <details>
             <summary>What am I looking at?</summary>

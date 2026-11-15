@@ -27,8 +27,7 @@ const COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)
 /**
  * Decode the backend's byte grid into a PNG:
  * - When `overlayMode = false`: opaque warm sunlit ground & cold blue shadow.
- * - When `overlayMode = true`: translucent golden sunlight & deep blue-black lunar night tint so the
- *   real NASA Moon Trek satellite tiles underneath remain crisp and visible!
+ * - When `overlayMode = true`: translucent sunlight and darkness over Moon Trek imagery.
  */
 function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
   const bin = atob(a.data);
@@ -114,7 +113,7 @@ export default function SouthPoleMap(props: Props) {
 
   const [failedTiles, setFailedTiles] = useState<string[]>([]);
   const imgUrl = useMemo(
-    () => (illum && (!hasTrek || (showShadows && !illum.synthetic)) ? illumToDataUrl(illum, hasTrek) : null),
+    () => (illum && (!hasTrek || showShadows) ? illumToDataUrl(illum, hasTrek) : null),
     [illum, hasTrek, showShadows],
   );
   const u = view.half / 300; // one "screen unit" in km, keeps labels/markers a constant size on screen
@@ -143,7 +142,7 @@ export default function SouthPoleMap(props: Props) {
         ref={svg}
         role="img"
         aria-label={hasTrek
-          ? "Lunar south pole map with NASA Moon Trek imagery and landing-site markers"
+          ? `Lunar south pole map with NASA Moon Trek imagery and landing-site markers${showShadows && illum ? illum.synthetic ? ", with simulated terrain shadows" : ", with estimated terrain lighting" : ""}`
           : illum?.synthetic
             ? "Simulated south pole terrain, sunlight, shadows, and landing-site markers"
             : "Lunar south pole modeled sunlit relief and landing-site markers"}

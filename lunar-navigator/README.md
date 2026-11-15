@@ -43,11 +43,15 @@ The local terrain API and A–H evaluations on the main server read the same LOL
 when installed; otherwise they report synthetic terrain. The 2D map offers
 LOLA-derived sunlit relief whose estimated shadows follow the date slider, plus
 NASA Moon Trek's fixed photographic, relief, elevation-color and slope imagery.
-The estimated-shadow overlay is optional and off by default. Moon Trek imagery
-does not provide numerical elevation for the 3D terrain or modeled shadows.
+The estimated lighting overlay is optional. Moon Trek imagery does not provide
+numerical elevation for the 3D terrain or modeled shadows.
 Unmodeled relief areas are
-blank rather than filled with the photo. Without the DEM, the separate **Simulated shadows**
-map shows illustrative lighting over synthetic terrain instead of overlaying it on imagery.
+blank rather than filled with the photo. The 2D map opens on LOLA Relief with a
+lighting overlay. Without the DEM, the overlay uses synthetic terrain, so shadows are
+illustrative and may not align with real features in the imagery. The separate
+**Simulated shadows** map shows the same synthetic terrain without imagery. Without the
+DEM, lighting uses a lower-resolution grid for faster updates and may lag behind the
+selected time during playback.
 The topographic view switches between a
 contour map and its A–A′ profile instead of displaying them together. Scores, shadows and windows are exploratory,
 not validated landing guidance.

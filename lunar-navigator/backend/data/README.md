@@ -35,9 +35,9 @@ filled with synthetic terrain. Brightness and shadow-side relief are visually
 enhanced and are not calibrated surface reflectance. Unmodeled areas are blank in
 relief mode. The separate photo mode shows the fixed LRO WAC mosaic; its
 photographed shadows do not move.
-Without a DEM, the 2D map offers a separate **Simulated shadows** view using the
-illumination API's synthetic terrain. It is illustrative and does not show real
-terrain shadows; synthetic shadows are not overlaid on Moon Trek imagery. The separate ephemeris-window
+Without a DEM, the 2D map's optional Moon Trek shadow overlay and separate **Simulated
+shadows** view use the illumination API's synthetic terrain. The shadows are
+illustrative and may not align with the real features shown in the imagery. The separate ephemeris-window
 skyline model remains synthetic. A–H roughness, terrain feature descriptions and ice proximity are
 unverified legacy assumptions, not LOLA measurements. Statuses and shadow estimates
 are exploratory, not validated landing guidance.

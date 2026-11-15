@@ -40,7 +40,7 @@ export default function CrossSection() {
   }) ?? [];
 
   return (
-    <div className="panel" style={{ flex: 1, minWidth: 360 }}>
+    <div className="panel" style={{ flex: 1, minWidth: "min(360px, 100%)" }}>
       <h3>Cross sections</h3>
       <div className="tabs">
         {DIRS.map((a) => (

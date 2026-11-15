@@ -4,6 +4,7 @@ Network is switched off (NASA JPL Horizons is not called) so these tests are det
 engine then uses the offline JPL DE421 ephemeris, which matches live Horizons to ~0.01°.
 """
 from datetime import datetime, timezone
+import importlib
 
 import pytest
 import numpy as np
@@ -30,6 +31,25 @@ def offline(monkeypatch):
 def test_health_reports_both_engines():
     h = client.get("/api/health").json()
     assert h["ok"] and h["evaluation_sites"] == list("ABCDEFGH")
+
+
+def test_configured_cors_origins(monkeypatch):
+    import app.main as main
+
+    with monkeypatch.context() as env:
+        env.setenv("CORS_ALLOWED_ORIGINS", "https://example.com, https://other.example")
+        configured_client = TestClient(importlib.reload(main).app)
+        headers = {"Origin": "https://example.com", "Access-Control-Request-Method": "POST",
+                   "Access-Control-Request-Headers": "content-type"}
+        response = configured_client.options("/api/terrain/cross-section", headers=headers)
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "https://example.com"
+        assert configured_client.get("/api/catalog", headers={"Origin": "http://localhost:5173"}).headers[
+            "access-control-allow-origin"
+        ] == "http://localhost:5173"
+        response = configured_client.get("/api/catalog", headers={"Origin": "https://untrusted.example"})
+        assert "access-control-allow-origin" not in response.headers
+    importlib.reload(main)
 
 
 def test_all_sites_contract():

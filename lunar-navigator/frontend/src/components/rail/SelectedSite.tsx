@@ -8,13 +8,21 @@ import { fmtUtc, hourKey, parseEngineUtc, sixHourKey, useLatest } from "../../ho
 import { fmtLat, fmtLon } from "../../lib/geo";
 import { go } from "../../router";
 import { normLon, useApp } from "../../state/store";
-import type { HorizonsCheck, SeriesPoint, SiteDetails, Status, Windows } from "../../types";
+import type { HorizonsCheck, SeriesPoint, Site, SiteDetails, Status, Windows } from "../../types";
 import { STATUS_UI, sourceLabel } from "./LandingList";
 
-export default function SelectedSite({ loading }: { loading: boolean }) {
+export default function SelectedSite({ loading, catalogSite, catalogPending, catalogError }: {
+  loading: boolean; catalogSite?: Site; catalogPending: boolean; catalogError: string | null;
+}) {
   const loc = useApp((s) => s.location());
   const details = useApp((s) => s.details);
 
+  if (catalogPending) return (
+    <section className="rail-sec selected">
+      <h2>Selected site</h2>
+      <p className={catalogError ? "error" : "muted"} role={catalogError ? "status" : undefined}>{catalogError ?? "Loading catalog site…"}</p>
+    </section>
+  );
   if (!loc) {
     return (
       <section className="rail-sec selected">
@@ -24,7 +32,7 @@ export default function SelectedSite({ loading }: { loading: boolean }) {
     );
   }
   if (loc.site) return <EngineSiteCard d={details} fallbackName={loc.site.name} id={loc.site.id} loading={loading} />;
-  return <CustomPointCard lat={loc.lat} lon={loc.lon} />;
+  return <CustomPointCard lat={loc.lat} lon={loc.lon} catalogSite={catalogSite} />;
 }
 
 function Actions() {
@@ -195,7 +203,7 @@ function cautions(w: Windows, terrainScore: number | undefined) {
   return c;
 }
 
-function CustomPointCard({ lat, lon }: { lat: number; lon: number }) {
+function CustomPointCard({ lat, lon, catalogSite }: { lat: number; lon: number; catalogSite?: Site }) {
   const time = useApp((s) => s.time);
   const key = `${lat},${lon}`;
   const hour = hourKey(time);
@@ -212,10 +220,16 @@ function CustomPointCard({ lat, lon }: { lat: number; lon: number }) {
       <div className="sel-title">
         <span className="letter big">X</span>
         <div>
-          <div className="sel-name">Custom point</div>
+          <div className="sel-name">{catalogSite?.name ?? "Custom point"}</div>
           <div className="muted small">{fmtLat(lat)}, {fmtLon(normLon(lon))}</div>
+          {catalogSite && <div className="muted small">{catalogSite.program} · {catalogSite.country}{catalogSite.year ? ` · ${catalogSite.year}` : ""}</div>}
         </div>
       </div>
+      {catalogSite && <div className="muted small">
+        {catalogSite.verified ? "Catalog coordinates are marked verified; independently check before use." : "Catalog coordinates are unverified."}
+        {" "}Evaluated as a custom point; terrain and scores are approximate.
+        {lat > -70 && " This site is outside the south-pole 2D map."}
+      </div>}
 
       <dl className="facts">
         <dt>Right now</dt>

@@ -6,6 +6,8 @@
         → map shadows, Sun/Earth positions, terrain, scores for any clicked point, mission plans
   /api/catalog → other notable landing sites (Apollo, Chang'e, CLPS…)
 """
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,9 +15,13 @@ from app.routers import ephemeris, evaluation, illumination, mission, score, sit
 
 app = FastAPI(title="Lunar Landing Site Navigator API", version="0.3.0")
 
+extra_origins = [origin.strip() for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+if "*" in extra_origins:
+    raise ValueError("CORS_ALLOWED_ORIGINS must list explicit origins, not *")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", *extra_origins],
     allow_methods=["*"],
     allow_headers=["*"],
 )

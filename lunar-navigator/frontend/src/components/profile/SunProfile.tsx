@@ -1,5 +1,5 @@
 // Sunlight & shadow along a slice through the site, across one lunar day. Owner: SKY3D.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
@@ -25,14 +25,16 @@ const VIEWPOINTS = [
 // The same shadow maths answers two questions: where does sunlight reach (power), and where is Earth
 // in direct line of sight (communication)? Terrain blocks a radio link exactly like it blocks light.
 const VIEW = {
-  sun: { tab: "☀️ Sunlight (power)", color: "var(--sun)", lit: "Sunlit ground", dark: "Shaded ground", air: "Shadow in the air",
-    down: "🌑 The Sun is below the horizon: lunar night here", total: "Direct sun", pct: "Slice in shade" },
-  earth: { tab: "🌍 Earth contact (comms)", color: "var(--earth)", lit: "Earth in view", dark: "Earth blocked by terrain", air: "No line of sight to Earth",
-    down: "📡 Earth is below the horizon: no direct contact, a relay satellite is needed", total: "Direct Earth contact", pct: "Slice with no contact" },
+  sun: { tab: "Sunlight / power", color: "var(--sun)", lit: "Sunlit ground", dark: "Shaded ground", air: "Shadow in the air",
+    down: "The Sun is below the horizon", total: "Direct sun", pct: "Slice in shade" },
+  earth: { tab: "Earth / communications", color: "var(--earth)", lit: "Earth in view", dark: "Earth blocked by terrain", air: "No line of sight to Earth",
+    down: "Earth is below the horizon; a relay is needed", total: "Direct Earth contact", pct: "Slice with no contact" },
 } as const;
 
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
+  const gradientId = useId();
+  const groundId = useId();
   const { time, setTime, baseTime, setBaseTime } = useApp();
   const details = useApp((s) => s.details); // A–H engine verdict for the selected site (null for custom points)
   const loc = useApp((s) => s.location());
@@ -139,7 +141,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       }
       const cx = W / 2, cy = Y((zmin + zmax) / 2);
       const d = (cy - 34) / Math.max(Math.sin(theta), 1e-3);
-      sunXY = { x: Math.min(W - 30, Math.max(30, cx + dir * d * Math.cos(theta))), y: 34 };
+      sunXY = { x: Math.min(W - 30, Math.max(30, cx + dir * d * Math.cos(theta))), y: 96 - 62 * Math.min(1, theta / (Math.PI / 3)) };
     }
 
     return { H, X, groundFill, air, runs, rays, sunXY };
@@ -174,21 +176,32 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         </div>
       )}
       {override && (
-        <div className="override-note">⚠ Manual Sun position ({override.alt}°, {override.az}°) from Mission setup. <button className="link" onClick={() => useApp.getState().setSunOverride(null)}>Use the real Sun</button></div>
+        <div className="override-note">Manual Sun position ({override.alt}°, {override.az}°) from Mission setup. <button className="link" onClick={() => useApp.getState().setSunOverride(null)}>Use the real Sun</button></div>
       )}
 
       {draw && slice ? (
         <svg viewBox={`0 0 ${W} ${draw.H}`} width="100%" role="img"
           aria-label={`Terrain slice from ${compass(bearing + 180)} to ${compass(bearing)}. ${view.pct}: ${shadePct}%.`}>
+          <defs>
+            <radialGradient id={gradientId}>
+              <stop offset="0%" stopColor={body === "sun" ? "#fffdf2" : "#c3e6fb"} />
+              <stop offset="65%" stopColor={body === "sun" ? "#ffe8a6" : "#4d98cf"} />
+              <stop offset="100%" stopColor={body === "sun" ? "#e5aa54" : "#173c6d"} />
+            </radialGradient>
+            <linearGradient id={groundId} x1="0" x2="0" y1="0" y2="1">
+              <stop stopColor="#777a7b" />
+              <stop offset="100%" stopColor="#272b32" />
+            </linearGradient>
+          </defs>
           {draw.rays.map((r, i) => <line key={i} {...r} stroke={view.color} strokeOpacity={0.55} strokeWidth={1.2} />)}
-          {draw.sunXY && <circle cx={draw.sunXY.x} cy={draw.sunXY.y} r={17} fill={view.color} />}
-          {draw.sunXY && body === "earth" && <text x={draw.sunXY.x} y={draw.sunXY.y + 5} textAnchor="middle" fontSize={13} fontWeight={700} fill="#06101f">Earth</text>}
+          {draw.sunXY && <circle cx={draw.sunXY.x} cy={draw.sunXY.y} r={body === "sun" ? 11 : 13} fill={`url(#${gradientId})`} />}
+          {draw.sunXY && <text x={draw.sunXY.x} y={draw.sunXY.y - 17} textAnchor="middle" fontSize={12} fill="var(--text)">{body === "sun" ? "Sun" : "Earth"}</text>}
           {!sun?.up && (
             <text x={W / 2} y={44} textAnchor="middle" fill="var(--muted)" fontSize={18}>
               {view.down}
             </text>
           )}
-          <path d={draw.groundFill} fill="var(--ground)" />
+          <path d={draw.groundFill} fill={`url(#${groundId})`} />
           <path d={draw.air} fill="var(--shadow-air)" />
           {draw.runs.map((r, i) => (
             <path key={i} d={r.d} fill="none" stroke={r.lit ? view.color : body === "sun" ? "var(--shade)" : "var(--red)"} strokeWidth={3.5} strokeLinejoin="round" />
@@ -234,13 +247,14 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <span><i className="swatch air" />{view.air}</span>
         <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}`}</span>
       </div>
+      <p className="muted small">Sun and Earth symbols are schematic, not to scale. This slice only models blockers along the profile; terrain outside it can also cast shadows.</p>
 
       <div className="profile-stats">
         <PlanView bearing={bearing} sunAz={now ? targetAz : undefined} sunUp={!!sun?.up} />
         {!expert ? (
           <div className="stats">
             <Stat label={body === "sun" ? "Landing spot" : "Call home?"}
-              value={siteLit == null ? "…" : body === "sun" ? (siteLit ? "☀ In sunlight" : "☾ In shadow") : (siteLit ? "📡 Yes, Earth in view" : "📡 No, needs a relay")} />
+              value={siteLit == null ? "…" : body === "sun" ? (siteLit ? "In sunlight" : "In shadow") : (siteLit ? "Earth in view" : "Needs a relay")} />
             <Stat label="Where the Sun is" value={now ? (now.sun_alt > 0 ? `Low in the ${compass(now.sun_az)}` : "Below the horizon") : "…"}
               sub={now && now.sun_alt > 0 ? `${now.sun_alt < 3 ? "Barely above the horizon, like sunrise" : "Above the horizon"}` : undefined} />
             <Stat label="Shadows point" value={now && now.sun_alt > 0 ? compass(now.sun_az + 180) : "—"} />

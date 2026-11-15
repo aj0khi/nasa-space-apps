@@ -4,15 +4,17 @@ import type {
   Site, SiteDetails, SunEarthState, Vehicle, Windows,
 } from "../types";
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
 async function get<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
   const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
-  const r = await fetch(`/api${path}?${qs}`);
+  const r = await fetch(`${apiBaseUrl}/api${path}?${qs}`);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
   return r.json();
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`/api${path}`, {
+  const r = await fetch(`${apiBaseUrl}/api${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

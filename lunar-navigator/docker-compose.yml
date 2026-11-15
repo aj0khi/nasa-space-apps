@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: lunar-navigator/backend/Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - kernels:/app/lunar-navigator/backend/data/kernels
+      - dem:/app/lunar-navigator/backend/data/dem
+  web:
+    build:
+      context: ..
+      dockerfile: lunar-navigator/frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
+
+volumes:
+  kernels:
+  dem:

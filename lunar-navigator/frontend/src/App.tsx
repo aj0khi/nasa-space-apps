@@ -15,13 +15,15 @@ import SelectedSite from "./components/rail/SelectedSite";
 import CoordsBar from "./components/rail/CoordsBar";
 import MissionSetup from "./components/rail/MissionSetup";
 import Conditions from "./components/rail/Conditions";
+import { useApi } from "./hooks/useApi";
 import { sixHourKey, useLatest } from "./hooks/useLatest";
-import { go, useRoute, View } from "./router";
+import { go, useRoute, Route, View } from "./router";
 import { useApp } from "./state/store";
 import MapView from "./views/MapView";
 import SectionView from "./views/SectionView";
 import ThreeDView from "./views/ThreeDView";
 import CompareView from "./views/CompareView";
+import HomeView from "./views/HomeView";
 
 export const CUSTOM_LETTER = "X";
 
@@ -34,16 +36,28 @@ const TABS: { key: View; label: string }[] = [
 
 export default function App() {
   const route = useRoute();
-  const { select, setCustom, clearSelection, selectedId, setEvaluation, setDetails, minDays } = useApp();
+  useEffect(() => {
+    const titles: Record<View, string> = { home: "Home", "2d": "Lunar map", section: "Cross section", "3d": "3D terrain", compare: "Compare" };
+    document.title = `${titles[route.view]} | Lunar Landing Site Navigator`;
+  }, [route.view]);
+  return route.view === "home" ? <HomeView /> : <Navigator route={route} />;
+}
+
+function Navigator({ route }: { route: Route }) {
+  const { select, setCustom, clearSelection, selectedId, custom, setEvaluation, setDetails, minDays } = useApp();
   const time = useApp((s) => s.time);
   const [cursor, setCursor] = useState<{ lat: number; lon: number } | null>(null);
+  const catalog = useApi(() => api.catalog(), [], 0);
+  const catalogSite = catalog.data?.find((site) => site.id === route.catalog);
 
   // URL → store
   useEffect(() => {
     if (route.site) select(route.site);
+    else if (route.catalog && catalogSite) setCustom(catalogSite.lat, catalogSite.lon);
+    else if (route.catalog) clearSelection();
     else if (route.lat != null && route.lon != null) setCustom(route.lat, route.lon);
     else clearSelection();
-  }, [route.site, route.lat, route.lon, select, setCustom, clearSelection]);
+  }, [route.site, route.catalog, route.lat, route.lon, catalogSite, select, setCustom, clearSelection]);
 
   // A–H engine: statuses for all sites, and full details for the selected one. 6-hour grid = NASA cache hits.
   const slot = sixHourKey(time);
@@ -57,8 +71,10 @@ export default function App() {
   }, [details.data, selectedId, setDetails]);
 
   const letter = selectedId ?? CUSTOM_LETTER;
-  const hasSelection = !!(route.site || route.lat != null);
+  const catalogReady = !!(catalogSite && custom && custom.lat === catalogSite.lat && custom.lon === catalogSite.lon);
+  const hasSelection = route.catalog ? catalogReady : !!(route.site || route.lat != null);
   const needsSelection = route.view === "section" || route.view === "3d";
+  const selectionKey = route.site ?? route.catalog ?? `${route.lat},${route.lon}`;
 
   return (
     <div className="shell">
@@ -72,25 +88,27 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="viewbody">
+        <div className={`viewbody${route.view === "2d" ? " viewbody-map" : ""}`}>
           {route.view === "2d" && <MapView onCursor={setCursor} />}
           {needsSelection && !hasSelection && (
             <div className="empty">
-              <p>Pick a landing site first.</p>
+              <p>{route.catalog ? (catalog.error ? `Couldn’t load the mission catalog: ${catalog.error}` : catalog.data && !catalogSite ? "This catalog site was not found." : "Loading catalog site…") : "Pick a landing site first."}</p>
               <button onClick={() => go.view("2d")}>Open the 2D map</button>
             </div>
           )}
-          {route.view === "section" && hasSelection && <SectionView letter={letter} />}
-          {route.view === "3d" && hasSelection && <ThreeDView />}
+          {route.view === "section" && hasSelection && <SectionView key={selectionKey} letter={letter} detailsError={details.loading ? null : details.error} />}
+          {route.view === "3d" && hasSelection && <ThreeDView key={selectionKey} />}
           {route.view === "compare" && <CompareView />}
         </div>
       </main>
       <aside className="rail">
         <DatePanel />
         <MissionSetup />
-        <LandingList loading={evaluation.loading} error={evaluation.error} onSelect={(id) => go.site(id)} />
-        <SelectedSite loading={details.loading} />
-        <Conditions />
+        <LandingList loading={evaluation.loading} error={evaluation.error} onSelect={(id) => go.site(id)}
+          catalog={catalog.data} catalogError={catalog.error} catalogId={route.catalog} />
+        <SelectedSite key={`selected:${selectionKey}`} loading={details.loading} catalogSite={catalogReady ? catalogSite : undefined}
+          catalogPending={!!route.catalog && !catalogReady} catalogError={catalog.error ?? (catalog.data && !catalogSite ? "Site not found in the catalog." : null)} />
+        {(!route.catalog || catalogReady) && <Conditions key={`conditions:${selectionKey}`} />}
         <CoordsBar cursor={cursor} />
       </aside>
     </div>

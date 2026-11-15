@@ -72,8 +72,8 @@ export default function SkyDome() {
             <polyline points={path("earth_alt", "earth_az")} fill="none" stroke="var(--earth)" strokeWidth={1.2} strokeDasharray="1 4" strokeLinecap="round" />
           </>
         )}
-        {sun && <text x={sun.x} y={sun.y + 6} fontSize="18" textAnchor="middle" opacity={sunLit ? 1 : 0.35}>☀️</text>}
-        {earth && <text x={earth.x} y={earth.y + 6} fontSize="18" textAnchor="middle" opacity={earthUp ? 1 : 0.35}>🌍</text>}
+        {sun && <circle cx={sun.x} cy={sun.y} r={5} fill="#ffe5aa" stroke="#f8c56d" strokeWidth={1.5} opacity={sunLit ? 1 : 0.35} />}
+        {earth && <circle cx={earth.x} cy={earth.y} r={5} fill="#87c4ee" stroke="#4da3ff" strokeWidth={1.5} opacity={earthUp ? 1 : 0.35} />}
       </svg>
       {engine && (
         <div className="muted small">

@@ -25,10 +25,11 @@ export default function LocalMap() {
   const key = loc ? `${loc.lat},${loc.lon}` : "";
   const canvas = useRef<HTMLCanvasElement>(null);
   const [trekCanvas, setTrekCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [trekError, setTrekError] = useState(false);
 
   const elev = useApi(() => (loc ? api.elevation(loc) : null), [key]);
   const state = useApi(() => (loc ? api.state(loc, time.toISOString()) : null), [key, time.getTime()]);
-  const sun = state.data?.sun;
+  const sun = state.error ? undefined : state.data?.sun;
   const shadow = useApi(
     () => (loc && sun && tab === "shadows" ? api.shadow(loc, sun.altitude, sun.azimuth) : null),
     [key, tab, sun?.altitude, sun?.azimuth],
@@ -37,6 +38,8 @@ export default function LocalMap() {
 
   // Load real NASA Moon Trek WMTS tile for this 20 km × 20 km region
   useEffect(() => {
+    setTrekCanvas(null);
+    setTrekError(false);
     if (!loc) {
       setTrekCanvas(null);
       return;
@@ -47,7 +50,7 @@ export default function LocalMap() {
         if (!cancelled) setTrekCanvas(c);
       })
       .catch(() => {
-        if (!cancelled) setTrekCanvas(null);
+        if (!cancelled) setTrekError(true);
       });
     return () => {
       cancelled = true;
@@ -55,13 +58,17 @@ export default function LocalMap() {
   }, [key]);
 
   useEffect(() => {
-    if (!canvas.current || !elev.data) return;
+    if (!canvas.current) return;
+    if (!elev.data || elev.error) {
+      canvas.current.getContext("2d")?.clearRect(0, 0, canvas.current.width, canvas.current.height);
+      return;
+    }
     drawGrid(canvas.current, elev.data.grid, elev.data.pixel_m, {
-      shadow: tab === "shadows" ? shadow.data?.mask : undefined,
-      rims: tab === "rims" ? rims.data?.mask : undefined,
+      shadow: tab === "shadows" && !shadow.error ? shadow.data?.mask : undefined,
+      rims: tab === "rims" && !rims.error ? rims.data?.mask : undefined,
       trekCanvas,
     });
-  }, [elev.data, shadow.data, rims.data, tab, trekCanvas]);
+  }, [elev.data, elev.error, shadow.data, shadow.error, rims.data, rims.error, tab, trekCanvas]);
 
   // Pointer → position on the tile. Grid convention (terrain.py): row 0 = north edge, col 0 = west edge, site at the center.
   const [hover, setHover] = useState<{ lat: number; lon: number; km: number } | null>(null);
@@ -76,17 +83,26 @@ export default function LocalMap() {
 
   const current = TABS.find((t) => t.key === tab)!;
   return (
-    <div className="panel" style={{ flex: 1, minWidth: 360 }}>
+    <div className="panel" style={{ flex: 1, minWidth: "min(360px, 100%)" }}>
       <h3>
         Site map{" "}
         <small className="muted">
-          {trekCanvas ? "(NASA Moon Trek LOLA/WAC + terrain)" : elev.data?.synthetic ? "(synthetic terrain)" : ""}
+          {trekCanvas ? "(NASA Moon Trek imagery + terrain)" : ""}
         </small>
       </h3>
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t.key} className={t.key === tab ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>
         ))}
+      </div>
+      <div className="muted small" role="status">
+        {elev.error ? `Terrain unavailable: ${elev.error}` : elev.data
+          ? `Elevation: ${elev.data.synthetic ? "synthetic (LOLA DEM unavailable at this site)" : "LOLA DEM"}.`
+          : "Loading terrain…"}
+        {trekError && " Moon Trek imagery unavailable; showing terrain hillshade."}
+        {state.error && ` Sun position unavailable: ${state.error}`}
+        {tab === "shadows" && shadow.error && ` Shadows unavailable: ${shadow.error}`}
+        {tab === "rims" && rims.error && ` Rims unavailable: ${rims.error}`}
       </div>
       <div style={{ position: "relative", marginTop: 8, cursor: "crosshair" }} title="Click to move the site here"
         onMouseMove={(e) => setHover(at(e))} onMouseLeave={() => setHover(null)}
@@ -108,7 +124,7 @@ export default function LocalMap() {
         {tab === "sun" && sun && <SunArrow az={sun.azimuth} alt={sun.altitude} />}
         <div style={{ position: "absolute", top: 4, left: "50%", fontSize: 12 }}>N</div>
       </div>
-      {tab === "shadows" && shadow.data?.lit_fraction != null && (
+      {tab === "shadows" && !shadow.error && shadow.data?.lit_fraction != null && (
         <div>Lit area: {(shadow.data.lit_fraction * 100).toFixed(0)}%</div>
       )}
       <ExplainCard text={current.help} />

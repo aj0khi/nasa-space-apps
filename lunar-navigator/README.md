@@ -68,6 +68,24 @@ npm run dev                                   # http://localhost:5173 (proxies /
 
 The first ephemeris call downloads about 20 MB of JPL kernels into `backend/data/kernels/`.
 
+### Separate frontend and backend
+
+By default the frontend uses the same-origin `/api` path, including the Vite
+development proxy. To use a separately hosted backend, set
+`VITE_API_BASE_URL` to its HTTPS origin (without `/api`) when building the
+frontend. Vite embeds this public value in the build; rebuild and redeploy after
+changing it. On the backend, set `CORS_ALLOWED_ORIGINS` to a comma-separated
+list of exact frontend origins, for example `https://example.com`. Local Vite
+development at `http://localhost:5173` remains allowed. Restart the backend
+after changing its environment.
+
+For a temporary demo, a Cloudflare Quick Tunnel can expose the local backend
+over HTTPS. Its URL changes when the tunnel restarts, so update
+`VITE_API_BASE_URL` and rebuild the frontend each time. The computer and tunnel
+must remain running. The API is publicly reachable: CORS restricts browser
+access to responses, but does not authenticate or protect the API from direct
+requests. Quick Tunnels are for testing, not production.
+
 For frontend builds from the repository root, run `npm install` followed by
 `npm run build`. The root install uses the frontend lockfile and includes its
 build tools even when the install environment is set to production.

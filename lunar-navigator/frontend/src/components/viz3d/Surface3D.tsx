@@ -8,6 +8,12 @@ import { useApi } from "../../hooks/useApi";
 import { renderGlobalMoonCanvas, renderSiteTrekCanvas, TrekLayerId } from "../../lib/moontrek";
 import { go } from "../../router";
 import { normLon, useApp } from "../../state/store";
+import {
+  DetailedSun,
+  DetailedEarth,
+  getMoonProceduralTexture,
+  makeCelestialBadge,
+} from "./celestialBodies";
 
 const VERT_EXAGGERATION = 3;
 const SKY_KM = 16; // how far out the Sun and Earth markers are drawn (scene units are km)
@@ -71,24 +77,7 @@ function Controls({ resetKey, mode, onClose }: { resetKey: number; mode: "terrai
   return null;
 }
 
-/** Sun or Earth drawn in its true direction. A line drops to the site so the direction reads in 3D. */
-function SkyBody({ alt, az, color, radius }: { alt: number; az: number; color: string; radius: number }) {
-  const pos = useMemo(() => skyDir(alt, az).multiplyScalar(SKY_KM), [alt, az]);
-  const up = alt > 0;
-  const line = useMemo(() => new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), pos]),
-    new THREE.LineBasicMaterial({ color, transparent: true, opacity: up ? 0.6 : 0.2 }),
-  ), [pos, color, up]);
-  return (
-    <group>
-      <mesh position={pos}>
-        <sphereGeometry args={[radius, 24, 16]} />
-        <meshBasicMaterial color={color} transparent opacity={up ? 1 : 0.25} />
-      </mesh>
-      <primitive object={line} />
-    </group>
-  );
-}
+
 
 export default function Surface3D({ height = 380, onExplore }: { height?: number; onExplore?: () => void }) {
   const [close, setClose] = useState(false);
@@ -104,6 +93,8 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
   const [globeTex, setGlobeTex] = useState<THREE.CanvasTexture | null>(null);
   const [siteTexError, setSiteTexError] = useState(false);
   const [globeTexError, setGlobeTexError] = useState(false);
+  const moonBaseTex = useMemo(() => getMoonProceduralTexture(), []);
+  const moonBadge = useMemo(() => makeCelestialBadge("🌕 Moon", "South Pole", "#a0b4d8"), []);
 
   const key = `${loc.lat},${loc.lon}`;
   const elev = useApi(() => api.elevation(loc, 20, 96), [key]);
@@ -264,8 +255,26 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
                 <meshBasicMaterial color="#ffffff" side={THREE.DoubleSide} />
               </mesh>
             </group>
-            {sun && <SkyBody alt={sun.altitude} az={sun.azimuth} color="#fff1c8" radius={0.9} />}
-            {earth && <SkyBody alt={earth.altitude} az={earth.azimuth} color="#4da3ff" radius={0.7} />}
+            {sun && (
+              <DetailedSun
+                position={skyDir(sun.altitude, sun.azimuth).multiplyScalar(SKY_KM)}
+                radius={0.95}
+                label="☀️ Sun"
+                sublabel={`${sun.altitude >= 0 ? "+" : ""}${sun.altitude.toFixed(1)}°`}
+                opacity={sun.altitude > 0 ? 1.0 : 0.28}
+                showLineToOrigin
+              />
+            )}
+            {earth && (
+              <DetailedEarth
+                position={skyDir(earth.altitude, earth.azimuth).multiplyScalar(SKY_KM)}
+                radius={0.75}
+                label="🌍 Earth"
+                sublabel={`${earth.altitude >= 0 ? "+" : ""}${earth.altitude.toFixed(1)}°`}
+                opacity={earth.altitude > 0 ? 1.0 : 0.28}
+                showLineToOrigin
+              />
+            )}
           </>
         ) : (
           <>
@@ -273,12 +282,14 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
             <directionalLight position={globeSunPos} intensity={2.4} />
             {/* 3D Moon sphere rotated so +Z is North Pole, -Z is South Pole, +X is 0° Prime Meridian */}
             <group rotation={[Math.PI / 2, Math.PI, 0]}>
-              <mesh key={globeTex ? globeTex.uuid : "globe-plain"}>
+              <mesh key={globeTex ? globeTex.uuid : "globe-detailed"}>
                 <sphereGeometry args={[GLOBE_RADIUS, 64, 64]} />
                 <meshStandardMaterial
-                  map={globeTex ?? undefined}
-                  color={globeTex ? "#ffffff" : "#888888"}
-                  roughness={0.95}
+                  map={globeTex ?? moonBaseTex}
+                  bumpMap={globeTex ?? moonBaseTex}
+                  bumpScale={0.08}
+                  color="#ffffff"
+                  roughness={0.92}
                 />
               </mesh>
             </group>
@@ -287,6 +298,12 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
               <ringGeometry args={[0.85, 0.92, 48]} />
               <meshBasicMaterial color="#4da3ff" transparent opacity={0.55} side={THREE.DoubleSide} />
             </mesh>
+            {/* South Pole Moon Badge */}
+            <primitive
+              object={moonBadge.sprite}
+              position={[0, 0, -GLOBE_RADIUS * 1.12]}
+              scale={[1.8 * moonBadge.aspect, 1.8, 1]}
+            />
             {/* Candidate Sites A-H markers on the South Pole of the 3D Globe */}
             {sites.map((s) => {
               const p = latLonToSphere(s.coordinates.lat, normLon(s.coordinates.lon), GLOBE_RADIUS * 1.012);
@@ -307,14 +324,18 @@ export default function Surface3D({ height = 380, onExplore }: { height?: number
               );
             })}
             {/* Sun & Earth indicators in space around the Moon */}
-            <mesh position={globeSunPos.clone().normalize().multiplyScalar(15)}>
-              <sphereGeometry args={[0.8, 24, 16]} />
-              <meshBasicMaterial color="#fff1c8" />
-            </mesh>
-            <mesh position={globeEarthPos.clone().normalize().multiplyScalar(14)}>
-              <sphereGeometry args={[0.6, 24, 16]} />
-              <meshBasicMaterial color="#4da3ff" />
-            </mesh>
+            <DetailedSun
+              position={globeSunPos.clone().normalize().multiplyScalar(15)}
+              radius={0.85}
+              label="☀️ Sun"
+              opacity={1.0}
+            />
+            <DetailedEarth
+              position={globeEarthPos.clone().normalize().multiplyScalar(14)}
+              radius={0.65}
+              label="🌍 Earth"
+              opacity={1.0}
+            />
           </>
         )}
       </Canvas>

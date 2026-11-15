@@ -15,6 +15,7 @@ import { detail, sampleTile } from "../../lib/regolith";
 import { useApp } from "../../state/store";
 import { useExpert } from "../learn/ModeGate";
 import { groundMaterial } from "./groundMaterial";
+import { DetailedSun, DetailedEarth } from "./celestialBodies";
 
 const TILE_KM = 20;
 const TILE_RES = 511; // ~39 m per sample (the backend allows at most 512 across)
@@ -53,6 +54,7 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
 
   const [pose, setPose] = useState<Pose>({ e: 0, n: -60, yaw: 0, pitch: -4 });
   const jump = useRef<{ e: number; n: number } | null>(null);
+  const beacon = useRef<HTMLDivElement>(null); // floating lander marker, positioned every frame by the Scene
   useEffect(() => { jump.current = { e: 0, n: -60 }; }, [key]); // new site → stand next to the lander
 
   const wideTile = useLatest(() => (loc ? api.elevation(loc, WIDE_KM, WIDE_RES).then((d) => ({ k: key, d })) : null), `wide|${key}`);
@@ -113,9 +115,14 @@ export default function ExploreView({ onBack }: { onBack?: () => void }) {
           <Canvas shadows camera={{ fov: 70, near: 0.5, far: 150000, up: [0, 0, 1], position: [0, -60, 2] }}
             gl={{ antialias: true }} onCreated={({ scene }) => { scene.background = new THREE.Color("#000000"); }}>
             <Scene grid={grid} wide={wide} refH={ref} ground={ground} sun={sun} earth={earth}
-              pose={pose} onPose={setPose} jump={jump} />
+              pose={pose} onPose={setPose} jump={jump} beacon={beacon}
+              siteName={loc.site?.name ?? "Landing site"} />
           </Canvas>
         )}
+        <div className="site-beacon" ref={beacon} hidden aria-hidden="true">
+          <svg className="sb-glyph" viewBox="0 0 16 16" width={14} height={14}><path d="M3 5.5 8 11l5-5.5" /></svg>
+          <span className="sb-label" />
+        </div>
         <div className="explore-hud">
           <div><b>{compass(pose.yaw)}</b> {Math.round(((pose.yaw % 360) + 360) % 360)}° · {lit == null ? "…" : lit ? "☀ you are in sunlight" : "☾ you are in shadow"}</div>
           <div className="muted small">
@@ -148,6 +155,8 @@ interface SceneProps {
   pose: Pose;
   onPose: (p: Pose) => void;
   jump: React.MutableRefObject<{ e: number; n: number } | null>;
+  beacon: React.RefObject<HTMLDivElement>;
+  siteName: string;
 }
 
 const dirVec = (alt: number, az: number) => new THREE.Vector3(Math.sin(az * D) * Math.cos(alt * D), Math.cos(az * D) * Math.cos(alt * D), Math.sin(alt * D));
@@ -175,7 +184,7 @@ function cutHole(g: THREE.BufferGeometry, m: number, sizeM: number, ce: number, 
   g.setIndex(idx);
 }
 
-function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump }: SceneProps) {
+function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump, beacon, siteName }: SceneProps) {
   const { camera, gl } = useThree();
   const [center, setCenter] = useState({ e: 0, n: 0 });
   // ---- terrain: 20 km tile with a hole where the detailed patch sits, inside a 100 km skyline ring
@@ -257,6 +266,7 @@ function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump }: Sce
     };
   }, [gl]);
 
+  const landerZ = useMemo(() => ground(0, 0), [ground]);
   const lastReport = useRef(0);
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.1);
@@ -280,6 +290,7 @@ function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump }: Sce
     camera.up.set(0, 0, 1);
     camera.lookAt(s.e + Math.sin(y) * Math.cos(p), s.n + Math.cos(y) * Math.cos(p), z + Math.sin(p));
     sky.current?.position.copy(camera.position);
+    placeBeacon(beacon.current, camera, gl.domElement, landerZ + BEACON_UP_M, Math.hypot(s.e, s.n), siteName);
 
     const now = performance.now();
     if (now - lastReport.current > 150) {
@@ -309,20 +320,70 @@ function Scene({ grid, wide, refH, ground, sun, earth, pose, onPose, jump }: Sce
       <group ref={sky}>
         <points geometry={stars}><pointsMaterial color="#cfd6e6" size={1.4} sizeAttenuation={false} /></points>
         {sunDir && (
-          <mesh position={sunDir.clone().multiplyScalar(SKY_M)}>
-            <sphereGeometry args={[sunR, 24, 16]} />
-            <meshBasicMaterial color="#fff6d8" />
-          </mesh>
+          <DetailedSun
+            position={sunDir.clone().multiplyScalar(SKY_M)}
+            radius={sunR}
+            label={sunUp ? "☀️ Sun" : undefined}
+            opacity={sunUp ? 1.0 : 0.25}
+          />
         )}
         {earthDir && (
-          <mesh position={earthDir.clone().multiplyScalar(SKY_M)}>
-            <sphereGeometry args={[earthR, 32, 20]} />
-            <meshBasicMaterial color="#4d8fff" />
-          </mesh>
+          <DetailedEarth
+            position={earthDir.clone().multiplyScalar(SKY_M)}
+            radius={earthR}
+            label="🌍 Earth"
+            opacity={1.0}
+          />
         )}
       </group>
     </>
   );
+}
+
+// ---- landing-site marker: a small screen-space pointer (site name + distance) that hovers over the lander at any distance, or sits at the
+// edge of the view as an arrow when the lander is off-screen or behind you. Updated straight on the DOM each
+// frame (no React re-render).
+const BEACON_UP_M = 7; // anchor a little above the lander's top
+const BEACON_HIDE_M = 25; // standing at the lander: no marker needed
+const EDGE_X = 66, EDGE_Y = 34; // px from the view edges for the off-screen arrow (room for its label at the sides)
+const _v = new THREE.Vector3();
+
+function fmtDist(m: number) {
+  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+}
+
+function placeBeacon(el: HTMLDivElement | null, camera: THREE.Camera, canvas: HTMLCanvasElement, z: number, dist: number, name: string) {
+  if (!el) return;
+  if (dist < BEACON_HIDE_M) { el.hidden = true; return; }
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  _v.set(0, 0, z).applyMatrix4(camera.matrixWorldInverse); // camera space: -z is in front
+  const behind = _v.z > 0;
+  _v.set(0, 0, z).project(camera);
+  let x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h;
+  const onScreen = !behind && x >= EDGE_X && x <= w - EDGE_X && y >= EDGE_Y && y <= h - EDGE_Y;
+  let rot = 0;
+  if (!onScreen) {
+    // direction from the view centre toward the lander (flipped when it is behind the camera), clamped to the edge
+    let dx = x - w / 2, dy = y - h / 2;
+    if (behind) { dx = -dx; dy = -dy; }
+    if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1;
+    const k = Math.min((w / 2 - EDGE_X) / Math.max(Math.abs(dx), 1e-6), (h / 2 - EDGE_Y) / Math.max(Math.abs(dy), 1e-6));
+    x = w / 2 + dx * k; y = h / 2 + dy * k;
+    rot = Math.atan2(dy, dx) * (180 / Math.PI) - 90; // the glyph points down (+y) by default
+  }
+  el.hidden = false;
+  el.classList.toggle("edge", !onScreen);
+  el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  const glyph = el.firstElementChild as SVGElement | null;
+  if (glyph) glyph.style.transform = onScreen ? "" : `rotate(${rot.toFixed(1)}deg)`;
+  const label = el.lastElementChild as HTMLElement | null;
+  const text = `${name} · ${fmtDist(dist)}`;
+  if (label && label.textContent !== text) label.textContent = text;
+  if (label) {
+    // keep long site names inside the view: slide the label sideways, never the pointer
+    const half = label.offsetWidth / 2, lx = Math.max(half + 8, Math.min(w - half - 8, x));
+    label.style.marginLeft = `${(lx - x).toFixed(1)}px`;
+  }
 }
 
 /** A simple lander at the landing site, true scale (~4 m wide, ~4 m tall). */

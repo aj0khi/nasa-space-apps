@@ -25,6 +25,7 @@ import SectionView from "./views/SectionView";
 import ThreeDView from "./views/ThreeDView";
 import CompareView from "./views/CompareView";
 import HomeView from "./views/HomeView";
+import ExploreView from "./components/viz3d/ExploreView";
 
 export const CUSTOM_LETTER = "X";
 
@@ -33,12 +34,13 @@ const TABS: { key: View; label: string }[] = [
   { key: "section", label: "Cross section" },
   { key: "3d", label: "3D" },
   { key: "compare", label: "Compare" },
+  { key: "explore", label: "Explore on foot" },
 ];
 
 export default function App() {
   const route = useRoute();
   useEffect(() => {
-    const titles: Record<View, string> = { home: "Home", "2d": "Lunar map", section: "Cross section", "3d": "3D terrain", compare: "Compare" };
+    const titles: Record<View, string> = { home: "Home", "2d": "Lunar map", section: "Cross section", "3d": "3D terrain", compare: "Compare", explore: "Explore on foot" };
     document.title = `${titles[route.view]} | SouthPoint`;
   }, [route.view]);
   return route.view === "home" ? <HomeView /> : <Navigator route={route} />;
@@ -74,7 +76,7 @@ function Navigator({ route }: { route: Route }) {
   const letter = selectedId ?? CUSTOM_LETTER;
   const catalogReady = !!(catalogSite && custom && custom.lat === catalogSite.lat && custom.lon === catalogSite.lon);
   const hasSelection = route.catalog ? catalogReady : !!(route.site || route.lat != null);
-  const needsSelection = route.view === "section" || route.view === "3d";
+  const needsSelection = route.view === "section" || route.view === "3d" || route.view === "explore";
   const selectionKey = route.site ?? route.catalog ?? `${route.lat},${route.lon}`;
 
   return (
@@ -100,6 +102,7 @@ function Navigator({ route }: { route: Route }) {
           {route.view === "section" && hasSelection && <SectionView key={selectionKey} letter={letter} detailsError={details.loading ? null : details.error} />}
           {route.view === "3d" && hasSelection && <ThreeDView key={selectionKey} />}
           {route.view === "compare" && <CompareView />}
+          {route.view === "explore" && hasSelection && <div className="scrollview"><ExploreView key={selectionKey} /></div>}
         </div>
       </main>
       <aside className="rail">

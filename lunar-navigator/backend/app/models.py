@@ -131,6 +131,14 @@ class LitRelief(BaseModel):
     synthetic: bool
 
 
+class PsrGrid(BaseModel):
+    """Permanently shadowed regions from NASA's LOLA PSR map (Barker et al.). Cells hold the shadowed fraction 0..1."""
+    available: bool
+    mask: list[list[float]] | None = None
+    psr_fraction: float | None = None
+    source: str | None = None
+
+
 class CrossSectionLine(BaseModel):
     azimuth: float = 0
     length_km: float = 10

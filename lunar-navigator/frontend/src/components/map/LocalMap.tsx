@@ -1,7 +1,7 @@
 // Local 20 km map around the site, with tabs: Sun position / Shadows / Rims. Owner: MAP.
 // Real LOLA terrain: lit like the 2D map (per-pixel Sun, shadows from up to 40 km away, slope brightness).
 // Synthetic terrain (no DEM here): NASA Moon Trek imagery + modelled terrain, as before.
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
@@ -10,6 +10,7 @@ import { renderSiteTrekCanvas } from "../../lib/moontrek";
 import { go } from "../../router";
 import { MapTab, useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
+import { SunSvg } from "../viz3d/celestialBodies";
 import { drawGrid, drawLitRelief, isEmptyMask, sunEdgePath } from "./gridCanvas";
 
 const SIZE_KM = 20; // must match the default tile size in api.elevation / api.shadow / api.rims
@@ -179,49 +180,29 @@ export default function LocalMap() {
 }
 
 /**
- * The Sun as seen from the site, drawn like the polar map: a glowing disc at the edge of the tile in the Sun's
- * direction (azimuth, clockwise from north), its altitude, and faint parallel rays showing which way light falls
- * across the tile. Shadows are cast away from the Sun. Dimmed when the Sun is below the horizon.
+ * The Sun as seen from the site: the 3D view's Sun (with its "☀️ Sun +x.x°" badge) at the edge of the tile in the
+ * Sun's direction (azimuth, clockwise from north), and faint parallel rays showing which way light falls across the
+ * tile. Shadows are cast away from the Sun. Faded when the Sun is below the horizon.
  */
 function SunMarker({ az, alt }: { az: number; alt: number }) {
-  const grad = `sun${useId().replace(/:/g, "")}`;
   const a = (az * Math.PI) / 180;
   const ux = Math.sin(a), uy = -Math.cos(a); // unit vector toward the Sun (y down = south)
-  const R = 42; // disc distance from the site, in a 100-unit tile
+  const R = 40; // Sun distance from the site, in a 100-unit tile
   const sx = ux * R, sy = uy * R;
   const up = alt > 0;
-  // label sits on the inner side of the disc so it never runs off the tile
-  const lx = sx - ux * 11, ly = sy - uy * 11 + 1.6;
   return (
     <svg viewBox="-50 -50 100 100" aria-label={`Sun at azimuth ${az.toFixed(0)}°, altitude ${alt.toFixed(1)}°`}
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "hidden" }}>
-      <defs>
-        <radialGradient id={grad}>
-          <stop offset="0%" stopColor="#fffdf3" />
-          <stop offset="70%" stopColor="#ffe7a4" />
-          <stop offset="100%" stopColor="#e4a953" />
-        </radialGradient>
-        <radialGradient id={`${grad}-glow`}>
-          <stop offset="0%" stopColor="#ffd98a" stopOpacity={0.55} />
-          <stop offset="100%" stopColor="#ffd98a" stopOpacity={0} />
-        </radialGradient>
-      </defs>
       {up && (
         <g stroke="#ffd27a" strokeOpacity={0.3} strokeWidth={0.3} strokeDasharray="1.5 1.5">
           {[-30, -15, 0, 15, 30].map((o) => {
             const px = -uy * o, py = ux * o; // offset perpendicular to the light
-            return <line key={o} x1={px + ux * 36} y1={py + uy * 36} x2={px - ux * 8} y2={py - uy * 8} />;
+            return <line key={o} x1={px + ux * 34} y1={py + uy * 34} x2={px - ux * 8} y2={py - uy * 8} />;
           })}
         </g>
       )}
-      <g transform={`translate(${sx} ${sy})`} opacity={up ? 1 : 0.45}>
-        <circle r={9} fill={`url(#${grad}-glow)`} />
-        <circle r={3.6} fill={`url(#${grad})`} stroke="#000" strokeOpacity={0.5} strokeWidth={0.3} />
-      </g>
-      <text x={lx} y={ly} fontSize={3.4} fontWeight={600} fill="#ffd27a" textAnchor="middle" paintOrder="stroke"
-        stroke="#000" strokeOpacity={0.75} strokeWidth={0.5} strokeLinejoin="round" opacity={up ? 1 : 0.7}>
-        Sun {alt >= 0 ? "+" : "−"}{Math.abs(alt).toFixed(1)}°{up ? "" : " (below horizon)"}
-      </text>
+      {/* the same Sun as the 3D view; badge on the side facing the middle so it stays on the tile */}
+      <SunSvg x={sx} y={sy} r={4.6} altitude={alt} badge={sy < 0 ? "below" : "above"} clampX={[-49, 49]} dim={!up} />
     </svg>
   );
 }

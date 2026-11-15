@@ -8,6 +8,7 @@ import { explain } from "../../content/explanations";
 import { useApi } from "../../hooks/useApi";
 import { useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
+import { EarthSvg, SunSvg } from "../viz3d/celestialBodies";
 
 const R = 100;
 const MIN_ALT = -10;
@@ -72,8 +73,10 @@ export default function SkyDome() {
             <polyline points={path("earth_alt", "earth_az")} fill="none" stroke="var(--earth)" strokeWidth={1.2} strokeDasharray="1 4" strokeLinecap="round" />
           </>
         )}
-        {sun && <circle cx={sun.x} cy={sun.y} r={5} fill="#ffe5aa" stroke="#f8c56d" strokeWidth={1.5} opacity={sunLit ? 1 : 0.35} />}
-        {earth && <circle cx={earth.x} cy={earth.y} r={5} fill="#87c4ee" stroke="#4da3ff" strokeWidth={1.5} opacity={earthUp ? 1 : 0.35} />}
+        {/* the same Sun as the 3D view (too small here for its badge) */}
+        {sun && <SunSvg x={sun.x} y={sun.y} r={6} badge="none" dim={!sunLit} />}
+        {/* the same Earth as the 3D view (too small here for its badge) */}
+        {earth && <EarthSvg x={earth.x} y={earth.y} r={6} badge="none" dim={!earthUp} />}
       </svg>
       {engine && (
         <div className="muted small">

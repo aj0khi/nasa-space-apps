@@ -8,6 +8,7 @@ import { useApp } from "../../state/store";
 import ExplainCard from "../learn/ExplainCard";
 import { useExpert } from "../learn/ModeGate";
 import { Body, inSection, nearestIndex, shade, stitch, sunHours } from "./profileMath";
+import { EarthSvg, SunSvg } from "../viz3d/celestialBodies";
 
 const W = 1000;
 const TOP = 120; // room above the terrain for the Sun and its rays
@@ -33,7 +34,6 @@ const VIEW = {
 
 /** `letter` labels the slice ends (A … A′) and the site in the middle, as in the team sketch. */
 export default function SunProfile({ letter = "A" }: { letter?: string }) {
-  const gradientId = useId();
   const groundId = useId();
   const { time, setTime, baseTime, setBaseTime } = useApp();
   const details = useApp((s) => s.details); // A–H engine verdict for the selected site (null for custom points)
@@ -183,19 +183,21 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <svg viewBox={`0 0 ${W} ${draw.H}`} width="100%" role="img"
           aria-label={`Terrain slice from ${compass(bearing + 180)} to ${compass(bearing)}. ${view.pct}: ${shadePct}%.`}>
           <defs>
-            <radialGradient id={gradientId}>
-              <stop offset="0%" stopColor={body === "sun" ? "#fffdf2" : "#c3e6fb"} />
-              <stop offset="65%" stopColor={body === "sun" ? "#ffe8a6" : "#4d98cf"} />
-              <stop offset="100%" stopColor={body === "sun" ? "#e5aa54" : "#173c6d"} />
-            </radialGradient>
             <linearGradient id={groundId} x1="0" x2="0" y1="0" y2="1">
               <stop stopColor="#777a7b" />
               <stop offset="100%" stopColor="#272b32" />
             </linearGradient>
           </defs>
           {draw.rays.map((r, i) => <line key={i} {...r} stroke={view.color} strokeOpacity={0.55} strokeWidth={1.2} />)}
-          {draw.sunXY && <circle cx={draw.sunXY.x} cy={draw.sunXY.y} r={body === "sun" ? 11 : 13} fill={`url(#${gradientId})`} />}
-          {draw.sunXY && <text x={draw.sunXY.x} y={draw.sunXY.y - 17} textAnchor="middle" fontSize={12} fill="var(--text)">{body === "sun" ? "Sun" : "Earth"}</text>}
+          {/* the Sun / Earth: the same as the 3D view's */}
+          {draw.sunXY && body === "sun" && (
+            <SunSvg x={draw.sunXY.x} y={draw.sunXY.y} r={13} badgeSize={30} altitude={now?.sun_alt}
+              badge={draw.sunXY.x > W / 2 ? "left" : "right"} clampX={[0, W]} />
+          )}
+          {draw.sunXY && body !== "sun" && (
+            <EarthSvg x={draw.sunXY.x} y={draw.sunXY.y} r={13} badgeSize={30} altitude={now?.earth_alt}
+              badge={draw.sunXY.x > W / 2 ? "left" : "right"} clampX={[0, W]} />
+          )}
           {!sun?.up && (
             <text x={W / 2} y={44} textAnchor="middle" fill="var(--muted)" fontSize={18}>
               {view.down}

@@ -8,6 +8,7 @@ import { contours, levels, niceInterval, offsetKm, rotate, toUV } from "../../li
 import { normLon, useApp } from "../../state/store";
 import { useExpert } from "../learn/ModeGate";
 import { inSection, shade } from "../profile/profileMath";
+import { SunSvg } from "../viz3d/celestialBodies";
 
 type Style = "paper" | "glow";
 const N = 301; // samples across the rotated map (odd, so the A–A′ line is a sample row)
@@ -143,6 +144,9 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
   const ink = style === "paper" ? "#3b3326" : "#c9f0c0";
   const north = { u: Math.cos((bearing * Math.PI) / 180), v: -Math.sin((bearing * Math.PI) / 180) };
   const sunDir = sunAz != null ? toUV(Math.sin((sunAz * Math.PI) / 180), Math.cos((sunAz * Math.PI) / 180), bearing) : null;
+  // Sun marker position: on the square's edge, 40 units in, in the Sun's direction
+  const sunEdge = sunDir ? (W / 2 - 40) / Math.max(Math.abs(sunDir.u), Math.abs(sunDir.v), 1e-6) : 0;
+  const sunX = sunDir ? W / 2 + sunDir.u * sunEdge : 0;
   const lineColor = (t: number) => (style === "paper" ? "rgba(58,44,26,0.7)" : ramp(GLOW, t));
   const scaleKm = sizeKm >= 50 ? 10 : 5;
 
@@ -269,9 +273,10 @@ export default function TopoView({ modeSwitch }: { modeSwitch?: React.ReactNode 
                 <text x={north.u * 32} y={north.v * 32 + 5} textAnchor="middle" fontSize={13} fontWeight={700} fill="#fff">N</text>
               </g>
               {sunDir && !night && (
-                <g transform={`translate(${W / 2 + sunDir.u * (W / 2 - 40) / Math.max(Math.abs(sunDir.u), Math.abs(sunDir.v), 1e-6)} ${mapTop + W / 2 + sunDir.v * (W / 2 - 40) / Math.max(Math.abs(sunDir.u), Math.abs(sunDir.v), 1e-6)})`}>
-                  <circle r={14} fill="var(--sun)" />
-                  <text y={30} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--sun)" className="topo-label">Sun</text>
+                <g transform={`translate(${sunX} ${mapTop + W / 2 + sunDir.v * sunEdge})`}>
+                  {/* the same Sun as the 3D view; badge on the side facing the middle of the map */}
+                  <SunSvg x={0} y={0} r={16} badgeSize={26} altitude={sunAlt} badge={sunDir.v < 0 ? "below" : "above"}
+                    clampX={[8 - sunX, W - 8 - sunX]} />
                 </g>
               )}
               {/* scale bar */}

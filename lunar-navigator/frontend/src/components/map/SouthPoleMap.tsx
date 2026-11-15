@@ -2,11 +2,12 @@
 // Integrates live NASA Moon Trek WMTS polar stereographic tiles (LROC WAC optical mosaic, LOLA 30m hillshade,
 // LOLA colorized elevation, and LOLA slope) with real-time dynamic solar illumination & shadow ray-casting.
 // Scroll to zoom, drag to pan, click a marker to select a site, click the ground to select any point.
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { project, ringRadius, unproject } from "../../lib/geo";
 import { contours } from "../../lib/topo";
 import { getVisiblePolarTiles, TrekLayerId } from "../../lib/moontrek";
 import { STATUS_UI } from "../rail/LandingList";
+import { EarthSvg, SunSvg } from "../viz3d/celestialBodies";
 import { normLon } from "../../state/store";
 import type { EvalSite, Features, Illumination } from "../../types";
 
@@ -80,7 +81,6 @@ function illumToDataUrl(a: Illumination, overlayMode: boolean): string {
 }
 
 export default function SouthPoleMap(props: Props) {
-  const sunGradient = useId();
   const {
     sites,
     features,
@@ -190,11 +190,6 @@ export default function SouthPoleMap(props: Props) {
         }}
       >
         <defs>
-          <radialGradient id={sunGradient}>
-            <stop offset="0%" stopColor="#fffdf3" />
-            <stop offset="70%" stopColor="#ffe7a4" />
-            <stop offset="100%" stopColor="#e4a953" />
-          </radialGradient>
           <clipPath id="south-pole-disc">
             <circle r={outer} />
           </clipPath>
@@ -285,20 +280,16 @@ export default function SouthPoleMap(props: Props) {
 
         {/* Sun and Earth on the horizon */}
         {sun && illum && (
-          <g transform={`translate(${sun.x},${sun.y})`} pointerEvents="none" opacity={illum.sun.elevation_at_pole > -2 ? 1 : 0.55}>
-            <circle r={10 * u} fill={`url(#${sunGradient})`} />
-            <text y={30 * u} fontSize={9 * u} fill="var(--sun)" textAnchor="middle" paintOrder="stroke" stroke="#000" strokeWidth={2 * u}>
-              Sun {illum.sun.elevation_at_pole >= 0 ? "+" : ""}{illum.sun.elevation_at_pole.toFixed(1)}°
-            </text>
-          </g>
+          // the same Sun as the 3D view; badge on the side facing the map centre so it isn't cut off
+          <SunSvg x={sun.x} y={sun.y} r={11 * u} badgeSize={16 * u} altitude={illum.sun.elevation_at_pole}
+            badge={sun.y < 0 ? "below" : "above"} dim={illum.sun.elevation_at_pole <= -2}
+            clampX={[view.cx - view.half + 4 * u, view.cx + view.half - 4 * u]} />
         )}
         {earth && illum && (
-          <g transform={`translate(${earth.x},${earth.y})`} pointerEvents="none">
-            <circle r={7 * u} fill="var(--earth)" stroke="#cfe3ff" strokeWidth={1 * u} />
-            <text y={19 * u} fontSize={8 * u} fill="var(--earth)" textAnchor="middle" paintOrder="stroke" stroke="#000" strokeWidth={2 * u}>
-              Earth
-            </text>
-          </g>
+          // the same Earth as the 3D view; badge on the side facing the map centre
+          <EarthSvg x={earth.x} y={earth.y} r={10 * u} badgeSize={16 * u} altitude={illum.earth.elevation_at_pole}
+            badge={earth.y < 0 ? "below" : "above"}
+            clampX={[view.cx - view.half + 4 * u, view.cx + view.half - 4 * u]} />
         )}
 
         {/* sites: square crosshair markers with their letter; filled with sunlight when lit right now */}

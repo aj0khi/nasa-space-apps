@@ -838,3 +838,200 @@ export function DetailedEarthSvg({ cx, cy, r = 10, opacity = 1, title, className
     </g>
   );
 }
+
+// ---------------------------------------------------------------- the 3D Sun, for flat (SVG) maps and diagrams
+// One look everywhere: the same photosphere texture, corona glow and "☀️ Sun +x.x°" badge as DetailedSun in 3D.
+
+let cachedSunDiscUrl: string | null = null;
+let cachedCoronaUrl: string | null = null;
+
+/** The Sun texture wrapped on a sphere and seen face-on (orthographic), as a transparent PNG. Built once. */
+function sunDiscUrl(): string {
+  if (cachedSunDiscUrl) return cachedSunDiscUrl;
+  const src = getSunTexture().image as HTMLCanvasElement;
+  const sw = src.width, sh = src.height;
+  const sdata = src.getContext("2d")!.getImageData(0, 0, sw, sh).data;
+  const n = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(n, n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const px = ((x + 0.5) / n) * 2 - 1, py = 1 - ((y + 0.5) / n) * 2;
+      const rr = px * px + py * py;
+      if (rr > 1) continue;
+      const pz = Math.sqrt(1 - rr);
+      const lon = Math.atan2(px, pz), lat = Math.asin(py);
+      // face the texture's seam (u = 0), the side without sunspot groups, like the 3D views usually show
+      const uf = (((lon / (2 * Math.PI)) % 1) + 1) % 1;
+      const u = Math.min(sw - 1, Math.max(0, Math.floor(uf * sw)));
+      const v = Math.min(sh - 1, Math.max(0, Math.floor((0.5 - lat / Math.PI) * sh)));
+      const si = (v * sw + u) * 4, di = (y * n + x) * 4;
+      img.data[di] = sdata[si];
+      img.data[di + 1] = sdata[si + 1];
+      img.data[di + 2] = sdata[si + 2];
+      img.data[di + 3] = Math.round(255 * Math.min(1, (1 - Math.sqrt(rr)) * n * 0.5)); // anti-aliased edge
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  cachedSunDiscUrl = c.toDataURL();
+  return cachedSunDiscUrl;
+}
+
+function coronaUrl(): string {
+  if (!cachedCoronaUrl) cachedCoronaUrl = (getSunCoronaTexture().image as HTMLCanvasElement).toDataURL();
+  return cachedCoronaUrl;
+}
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+function textWidth(text: string, fontPx: number): number {
+  measureCtx ??= document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return text.length * fontPx * 0.6;
+  measureCtx.font = `600 ${fontPx}px system-ui, -apple-system, sans-serif`;
+  return measureCtx.measureText(text).width;
+}
+
+/** Same wording as the 3D badge: "☀️ Sun  +0.2°". */
+export const sunBadgeText = (altitude?: number | null) =>
+  altitude == null ? "☀️ Sun" : `☀️ Sun  ${altitude >= 0 ? "+" : "−"}${Math.abs(altitude).toFixed(1)}°`;
+
+export interface SunSvgProps {
+  /** Centre, in the parent SVG's units. */
+  x: number;
+  y: number;
+  /** Disc radius, in the parent SVG's units. */
+  r: number;
+  /** Sun altitude in degrees, shown on the badge; omit for a plain "☀️ Sun" badge. */
+  altitude?: number | null;
+  /** Where the badge goes (pick the side facing the middle of the drawing so it isn't clipped). */
+  badge?: BadgePlace;
+  /** Keep the badge inside these x limits (parent units), e.g. the edges of a map tile. */
+  clampX?: [number, number];
+  /** Faded, e.g. when the Sun is below the horizon (the 3D view uses 0.28). */
+  dim?: boolean;
+  /** Badge height in parent units (default: just under the disc radius, as in 3D). For small suns on big maps. */
+  badgeSize?: number;
+  title?: string;
+}
+
+/** The 3D view's Sun (photosphere, corona glow, badge) drawn in any SVG. Matches DetailedSun. */
+export function SunSvg({ x, y, r, altitude, badge = "above", clampX, dim = false, badgeSize, title }: SunSvgProps) {
+  const disc = useMemo(sunDiscUrl, []);
+  const corona = useMemo(coronaUrl, []);
+  const text = sunBadgeText(altitude);
+  const { bx, by, w, h, fs } = badgeLayout(text, x, y, r, badge, badgeSize, clampX);
+  const cs = r * 4.6; // corona size relative to the disc, as in 3D
+  return (
+    <g opacity={dim ? 0.28 : 1} pointerEvents="none">
+      {title && <title>{title}</title>}
+      {/* corona behind the disc: in 3D it's a sprite at the sphere's centre, so the sphere hides it except at the
+          rim. A faint normal copy keeps the halo visible on bright ground, where a screen blend vanishes. */}
+      <image href={corona} x={x - cs / 2} y={y - cs / 2} width={cs} height={cs} opacity={0.35} />
+      <image href={corona} x={x - cs / 2} y={y - cs / 2} width={cs} height={cs} style={{ mixBlendMode: "screen" }} opacity={0.9} />
+      <image href={disc} x={x - r} y={y - r} width={2 * r} height={2 * r} />
+      {badge !== "none" && <BadgeSvg x={bx} y={by} w={w} h={h} fs={fs} text={text} accent="#ffb300" />}
+    </g>
+  );
+}
+
+/** Badge geometry shared by SunSvg and EarthSvg: pill size from the text, beside/above/below the body, clamped. */
+function badgeLayout(text: string, x: number, y: number, r: number, badge: BadgePlace, badgeSize?: number,
+  clampX?: [number, number]) {
+  const h = badgeSize ?? r * 0.95; // badge height
+  const fs = h * 0.6;
+  const w = textWidth(text, 100) * (fs / 100) + h * 0.9;
+  const side = badge === "left" ? -1 : badge === "right" ? 1 : 0;
+  let bx = side ? x + side * (r * 1.35 + w / 2) : x;
+  if (clampX) bx = Math.min(clampX[1] - w / 2, Math.max(clampX[0] + w / 2, bx));
+  const gap = r * 1.35 + h / 2;
+  const by = side ? y : badge === "below" ? y + gap : y - gap;
+  return { bx, by, w, h, fs };
+}
+
+type BadgePlace = "above" | "below" | "left" | "right" | "none";
+
+/** The 3D views' text badge (makeCelestialBadge) as SVG: dark glass pill, coloured border, white text. */
+function BadgeSvg({ x, y, w, h, fs, text, accent }: { x: number; y: number; w: number; h: number; fs: number; text: string; accent: string }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill="rgba(10, 15, 26, 0.85)" stroke={accent}
+        strokeWidth={Math.max(0.3, h * 0.07)} />
+      <text y={fs * 0.36} textAnchor="middle" fontSize={fs} fontWeight={600} fill="#ffffff"
+        fontFamily="system-ui, -apple-system, sans-serif">{text}</text>
+    </g>
+  );
+}
+
+let cachedEarthDiscUrl: string | null = null;
+let cachedAtmosphereUrl: string | null = null;
+
+// The face shown in flat views: centred on Africa / Europe, a little north of the equator (the classic "Blue Marble").
+const EARTH_FACE_LAT = 15, EARTH_FACE_LON = 20;
+
+/**
+ * The 3D views' Earth texture (getEarthTexture, equirectangular: lon −180…180 left→right, lat 90…−90 top→bottom)
+ * on a sphere seen face-on (orthographic), centred on EARTH_FACE_LAT / EARTH_FACE_LON, as a transparent PNG. Built once.
+ */
+function earthDiscUrl(): string {
+  if (cachedEarthDiscUrl) return cachedEarthDiscUrl;
+  const src = getEarthTexture().image as HTMLCanvasElement;
+  const sw = src.width, sh = src.height;
+  const sdata = src.getContext("2d")!.getImageData(0, 0, sw, sh).data;
+  const n = 160;
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(n, n);
+  const D = Math.PI / 180;
+  const cl = Math.cos(EARTH_FACE_LAT * D), sl = Math.sin(EARTH_FACE_LAT * D);
+  for (let yy = 0; yy < n; yy++) {
+    for (let xx = 0; xx < n; xx++) {
+      const px = ((xx + 0.5) / n) * 2 - 1, py = 1 - ((yy + 0.5) / n) * 2;
+      const rr = px * px + py * py;
+      if (rr > 1) continue;
+      const pz = Math.sqrt(1 - rr);
+      // inverse orthographic projection
+      const lat = Math.asin(Math.max(-1, Math.min(1, py * cl + pz * sl))) / D;
+      const lon = EARTH_FACE_LON + Math.atan2(px, pz * cl - py * sl) / D;
+      const u = Math.min(sw - 1, Math.floor((((((lon + 180) / 360) % 1) + 1) % 1) * sw));
+      const v = Math.min(sh - 1, Math.max(0, Math.floor(((90 - lat) / 180) * sh)));
+      const si = (v * sw + u) * 4, di = (yy * n + xx) * 4;
+      img.data[di] = sdata[si];
+      img.data[di + 1] = sdata[si + 1];
+      img.data[di + 2] = sdata[si + 2];
+      img.data[di + 3] = Math.round(255 * Math.min(1, (1 - Math.sqrt(rr)) * n * 0.5));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  cachedEarthDiscUrl = c.toDataURL();
+  return cachedEarthDiscUrl;
+}
+
+function atmosphereUrl(): string {
+  if (!cachedAtmosphereUrl) cachedAtmosphereUrl = (getEarthAtmosphereTexture().image as HTMLCanvasElement).toDataURL();
+  return cachedAtmosphereUrl;
+}
+
+/** Same wording as the 3D badge: "🌍 Earth  −5.6°". */
+export const earthBadgeText = (altitude?: number | null) =>
+  altitude == null ? "🌍 Earth" : `🌍 Earth  ${altitude >= 0 ? "+" : "−"}${Math.abs(altitude).toFixed(1)}°`;
+
+/** The 3D view's Earth (Blue Marble sphere, cyan atmosphere, blue badge) drawn in any SVG. Matches DetailedEarth. */
+export function EarthSvg({ x, y, r, altitude, badge = "above", clampX, dim = false, badgeSize, title }: SunSvgProps) {
+  const disc = useMemo(earthDiscUrl, []);
+  const atmo = useMemo(atmosphereUrl, []);
+  const text = earthBadgeText(altitude);
+  const { bx, by, w, h, fs } = badgeLayout(text, x, y, r, badge, badgeSize, clampX);
+  const as = r * 2.7; // atmosphere size relative to the disc, as in 3D
+  return (
+    <g opacity={dim ? 0.28 : 1} pointerEvents="none">
+      {title && <title>{title}</title>}
+      {/* atmosphere behind the disc (in 3D the sphere hides the sprite except at the rim), as for the Sun */}
+      <image href={atmo} x={x - as / 2} y={y - as / 2} width={as} height={as} opacity={0.35} />
+      <image href={atmo} x={x - as / 2} y={y - as / 2} width={as} height={as} style={{ mixBlendMode: "screen" }} opacity={0.85} />
+      <image href={disc} x={x - r} y={y - r} width={2 * r} height={2 * r} />
+      {badge !== "none" && <BadgeSvg x={bx} y={by} w={w} h={h} fs={fs} text={text} accent="#4da3ff" />}
+    </g>
+  );
+}

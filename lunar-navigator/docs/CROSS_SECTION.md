@@ -8,14 +8,17 @@ where it stops being trustworthy. It lives in the same place as before and keeps
 1. **A slice of the measured ground.** From `GET /api/terrain/section`, read from the LOLA 20 m south-pole DEM.
    Heights include the Moon's curvature, so a straight ray of light is a straight line on the drawing.
 2. **The slice is locked.** When a site opens the slice points at the Sun and then stays put, so the ground does
-   not move while the time changes. "Lock to the Sun now" re-aims it. "Follow the Sun" (16 directions, 22.5°
-   apart) is still there as an option.
+   not move while the time changes. "Sun on the left" and "Sun on the right" turn the slice to the Sun and draw it
+   on that side. "Follow the Sun" is an option: with "Smooth turning" on, the slice turns one degree at a time and
+   the ground glides between slices; with it off, the slice jumps between 16 fixed directions. While following,
+   the ground colours come from the slice alone (the body is then always in the page).
 3. **Event view.** "Next sunset" and "Next sunrise" (Earthset and Earthrise in the Earth tab) turn the slice to
    where the body crosses the skyline and move the time to 12 hours before. Dragging the slider then shows it sink
    behind, or rise over, the real terrain at its real angle.
 4. **A body off the slice is drawn as off the slice.** A side-on picture cannot show a direction that leaves the
    page. When the Sun is more than 11.25° off the slice line it is drawn hollow at its real elevation, with the
-   number of degrees off; no projected angle, sight line or 2-D shadow is drawn.
+   number of degrees off; no projected angle, sight line or 2-D shadow is drawn. A "Turn the slice to the Sun"
+   button sits beside the hollow marker.
 5. **True ground colours.** `GET /api/terrain/slice-light` ray traces every ground point on the slice through the
    full terrain for the whole lunar day. The colours, the hours-of-sunlight strip and "this slice in shadow" come
    from that. Until it arrives, or if it is unavailable, the panel falls back to shadows from the slice alone and
@@ -25,8 +28,9 @@ where it stops being trustworthy. It lives in the same place as before and keeps
 7. **Skyline strip** (`SkylineStrip.tsx`): the skyline all around the lander unrolled into a strip, with the Sun's
    and Earth's paths over the lunar day. Where a path is above the ground the body is in view. Clicking a direction
    aims the slice there; clicking a path goes to that moment.
-8. **Mini-map** (`SliceMiniMap.tsx`): the terrain from above with the slice line, the body's direction and the
-   shadows at the slider time, from `GET /api/terrain/shadow-map`.
+8. **Mini-map** (`SliceMiniMap.tsx`): a small map on the drawing itself, at the end away from the body: the
+   terrain from above with the slice line, the body's direction and the shadows at the slider time, from
+   `GET /api/terrain/shadow-map`. "Larger" enlarges it; clicking it aims the slice.
 9. **Eye height** 2, 5 or 10 m: the height of the solar panel or antenna. **Reach** 8 to 150 km each way.
    **Height scale** 1:1 to x20, with a small 1:1 inset whenever heights are stretched; printed angles are always real.
 

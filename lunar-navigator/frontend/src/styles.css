@@ -492,6 +492,18 @@ input[type="range"]:disabled { opacity: 0.45; }
 .profile-note { min-height: 36px; margin: 0 0 12px; line-height: 1.5; max-width: 150ch; }
 .profile-stats { align-items: flex-start; }
 .profile .profile-stats { margin: 12px 0 14px; }
+/* The small map sits on the drawing, in the top corner at the end the slice points to. */
+.profile-frame { position: relative; }
+.profile-map { position: absolute; top: 8%; width: 15%; min-width: 108px; max-width: 150px; z-index: 2; }
+.profile-map.at-right { right: 3.4%; }
+.profile-map.at-left { left: 3.4%; }
+.profile-map.low { top: 22%; }
+.profile-map.big { width: 288px; min-width: 0; max-width: 46%; }
+.profile-map .minimap { width: 100%; }
+.profile-map .minimap-caption { display: none; }
+.profile-map.big .minimap-caption { display: block; height: auto; max-height: 150px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.profile-map-size { position: absolute; bottom: 4px; right: 4px; padding: 1px 7px; font-size: 11px; line-height: 1.5; background: rgba(8, 10, 16, 0.78); }
+.profile-map.big .profile-map-size { top: 4px; bottom: auto; }
 .profile-reaim { cursor: pointer; }
 .profile-reaim:hover rect, .profile-reaim:focus-visible rect { fill: var(--line); }
 .profile-reaim:focus-visible { outline: none; }

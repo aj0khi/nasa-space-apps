@@ -201,7 +201,8 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
 
   const [lock, setLock] = useState<Lock | null>(null); // direction the slice is locked to
   const [follow, setFollow] = useState(false); // optional: the slice turns with the body, in 16 steps
-  const [smooth, setSmooth] = useState(false); // trial: follow in 1° steps and glide between slices
+  const [smooth, setSmooth] = useState(true); // when following: turn in 1° steps and glide (on), or jump between 16 directions (off)
+  const [mapBig, setMapBig] = useState(false); // the small map on the drawing, enlarged
   const turning = follow && smooth;
   const [mirror, setMirror] = useState(false); // draw the slice the other way round (A on the left)
   const [lengthKm, setLengthKm] = useState(8);
@@ -326,9 +327,9 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     lockTo(wholeDeg(targetAz));
     setMirror(!right);
   };
-  const toggleFollow = (sm: boolean) => {
-    if (follow && smooth === sm && bearing != null) { lockTo(bearing); return; }
-    setSmooth(sm); setFollow(true); setViewed(null);
+  const toggleFollow = () => {
+    if (follow && bearing != null) { lockTo(bearing); return; }
+    setFollow(true); setViewed(null);
   };
 
   // In the page only: shadows cast by ground on this slice, with the body's true elevation.
@@ -680,6 +681,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
     : "Loading the terrain slice… the first read of a site takes a few seconds, or up to half a minute when the terrain is read from NASA.";
 
   const endA = { t: letter, right: !mirror }, endB = { t: `${letter}′`, right: mirror };
+  const mapRight = !(toA ? !mirror : mirror); // the small map goes to the end the body is NOT at
   const leftAz = mirror ? shown : shown + 180, rightAz = mirror ? shown + 180 : shown;
   const darkColor = body === "sun" ? "var(--shade)" : "var(--red)";
   const toneColor = (t: number) => (t === 1 ? view.color : t === 0 ? darkColor : "var(--muted)");
@@ -699,10 +701,10 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <div className="tabs" role="group" aria-label="Which way the slice points">
           <button disabled={!now} onClick={() => aim(false)} title={`Turn the slice to ${view.the} and draw it on the left`}>{view.name} on the left</button>
           <button disabled={!now} onClick={() => aim(true)} title={`Turn the slice to ${view.the} and draw it on the right`}>{view.name} on the right</button>
-          <button className={follow && !smooth ? "active" : ""} aria-pressed={follow && !smooth} disabled={!now} onClick={() => toggleFollow(false)}
-            title="The slice jumps to the nearest of 16 fixed directions as the body moves">Follow in 16 steps</button>
-          <button className={turning ? "active" : ""} aria-pressed={turning} disabled={!now} onClick={() => toggleFollow(true)}
-            title="Trial: the slice turns with the body one degree at a time and the ground glides between slices">Smooth follow (trial)</button>
+          <button className={follow ? "active" : ""} aria-pressed={follow} disabled={!now} onClick={toggleFollow}
+            title={`The slice turns with ${view.the}, so it always stays in the page. Press again to lock the slice where it is.`}>Follow {view.the}: {follow ? "on" : "off"}</button>
+          <button className={smooth ? "active" : ""} aria-pressed={smooth} onClick={() => setSmooth(!smooth)}
+            title="While following. On: the slice turns one degree at a time and the ground glides. Off: it jumps between 16 fixed directions.">Smooth turning: {smooth ? "on" : "off"}</button>
         </div>
         <span className="muted small">{body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}</span>
         <div className="tabs" role="group" aria-label={body === "sun" ? "Sunrise and sunset" : "Earthrise and Earthset"}>
@@ -833,6 +835,14 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         ) : (
           <div className="profile-loading">{loadingText}</div>
         )}
+        {/* the same moment from above: a small map in a top corner, at the end away from the body so it never covers
+            the marker or the sight line; under the 1:1 inset when that is showing at the same end */}
+        <div className={`profile-map${mapBig ? " big" : ""}${mapRight ? " at-right" : " at-left"}${mapRight === endB.right && exag !== 1 ? " low" : ""}`}>
+          <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
+            bodyInView={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} observerM={observerM} color={view.color}
+            onPickAzimuth={lockTo} />
+          <button className="profile-map-size" aria-pressed={mapBig} onClick={() => setMapBig(!mapBig)}>{mapBig ? "Smaller" : "Larger"}</button>
+        </div>
       </div>
 
       {/* hours of light per ground point over the lunar day: only from the ray-traced data */}
@@ -853,9 +863,6 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
       </div>
 
       <div className="profile-stats">
-        <SliceMiniMap loc={loc} sliceAzimuth={shown} lengthKm={shownKm} letter={letter} body={body} bodyAlt={targetAlt} bodyAz={now ? targetAz : null}
-          bodyInView={seen ? seen.state !== "hidden" : (targetAlt ?? 0) > 0} observerM={observerM} color={view.color}
-          onPickAzimuth={lockTo} />
         {!expert ? (
           <div className="stats">
             <Stat label={body === "sun" ? "Landing spot" : "Call home?"} value={skyWords.value} sub={skyWords.sub} />
@@ -914,7 +921,7 @@ export default function SunProfile({ letter = "A" }: { letter?: string }) {
         <span><i className="line tick" />Skyline in {view.the === "Earth" ? "Earth's" : "the Sun's"} true direction (ray traced)</span>
         <span>{exag === 1 ? "Drawn 1:1, no vertical exaggeration" : `Heights exaggerated ×${exag}; printed angles are real`}{sec?.curvature ? " · Moon's curve included" : ""}</span>
       </div>
-      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote}</p>
+      <p className="muted small profile-note">Sun and Earth symbols are schematic, not to scale. {groundNote} The small map on the drawing shows the same moment from above, with shadows ray traced on the real terrain; click it to aim the slice, or press "Larger" to read it.</p>
 
       {skyline && (
         <div className="profile-source">

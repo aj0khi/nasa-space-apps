@@ -488,3 +488,8 @@ input[type="range"]:disabled { opacity: 0.45; }
 .site-beacon.edge .sb-label { translate: -50% 12px; }
 @keyframes sb-hover { 0%, 100% { margin-top: 0; } 50% { margin-top: -3px; } }
 @media (prefers-reduced-motion: reduce) { .site-beacon .sb-glyph { animation: none; } }
+
+/* Power · thermal · comms (rail) */
+.systems-grid { grid-template-columns: 1fr 1fr; margin-bottom: 10px; }
+.systems-grid .span2 { grid-column: 1 / -1; }
+.systems .cond-list li.muted { font-size: 12px; line-height: 1.45; }
